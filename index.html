@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rPPG Vitals Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .disclaimer {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+        }
+        
+        .upload-box {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+        
+        .upload-box.dragging {
+            border-color: #764ba2;
+            background: #f0f0ff;
+        }
+        
+        .upload-box input {
+            display: none;
+        }
+        
+        .upload-text {
+            color: #667eea;
+            font-weight: 500;
+        }
+        
+        .file-name {
+            color: #666;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+        }
+        
+        .result-card {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .result-label {
+            color: #666;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .result-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .result-unit {
+            color: #999;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+        
+        .risk-high {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        
+        .risk-moderate {
+            border-left-color: #ff9800;
+            background: #fff3e0;
+        }
+        
+        .risk-low {
+            border-left-color: #4caf50;
+            background: #e8f5e9;
+        }
+        
+        .error {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>❤️ rPPG Vitals Analyzer</h1>
+            <p>Experimental Camera-Based Vital Signs</p>
+        </div>
+        
+        <div class="disclaimer">
+            <strong>⚠️ Disclaimer:</strong> This is an experimental research prototype. NOT clinically validated. Do NOT use for medical decisions. Always consult healthcare professionals.
+        </div>
+        
+        <div class="upload-box" id="uploadBox">
+            <div class="upload-text">📹 Click or drag video here</div>
+            <div style="font-size: 12px; color: #999; margin-top: 8px;">MP4, MOV, AVI, MKV (max 500 MB)</div>
+            <input type="file" id="fileInput" accept="video/*">
+            <div class="file-name" id="fileName"></div>
+        </div>
+        
+        <button id="analyzeBtn" disabled>Analyzing...</button>
+        
+        <div class="progress" id="progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Starting analysis...</div>
+        </div>
+        
+        <div class="error" id="error"></div>
+        <div class="success" id="success"></div>
+        
+        <div class="results" id="results"></div>
+    </div>
+    
+    <script>
+        const uploadBox = document.getElementById('uploadBox');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const results = document.getElementById('results');
+        const errorDiv = document.getElementById('error');
+        const successDiv = document.getElementById('success');
+        
+        // File upload handling
+        uploadBox.addEventListener('click', () => fileInput.click());
+        
+        uploadBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadBox.classList.add('dragging');
+        });
+        
+        uploadBox.addEventListener('dragleave', () => {
+            uploadBox.classList.remove('dragging');
+        });
+        
+        uploadBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('dragging');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+        
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (file) {
+                fileName.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '🔍 Analyze Video';
+                errorDiv.style.display = 'none';
+            }
+        }
+        
+        analyzeBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = '⏳ Processing...';
+            progress.style.display = 'block';
+            results.style.display = 'none';
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            progressFill.style.width = '0%';
+            
+            try {
+                const response = await fetch('http://localhost:8000/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Analysis failed');
+                }
+                
+                const data = await response.json();
+                
+                // Simulate progress completion
+                progressFill.style.width = '100%';
+                progressText.textContent = 'Complete!';
+                
+                setTimeout(() => {
+                    displayResults(data);
+                    progress.style.display = 'none';
+                    analyzeBtn.disabled = false;
+                    analyzeBtn.textContent = '🔍 Analyze Another Video';
+                }, 500);
+                
+            } catch (error) {
+                errorDiv.textContent = `❌ Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+                progress.style.display = 'none';
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '🔍 Analyze Video';
+            }
+        });
+        
+        function displayResults(data) {
+            const vitals = data.vitals;
+            const risk = data.risk;
+            
+            let riskClass = 'risk-low';
+            if (risk.risk_level === 'HIGH') riskClass = 'risk-high';
+            else if (risk.risk_level === 'MODERATE') riskClass = 'risk-moderate';
+            
+            results.innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #333; margin-bottom: 15px;">📊 Results</h3>
+                </div>
+                
+                <div class="result-card">
+                    <div class="result-label">❤️ Heart Rate</div>
+                    <div class="result-value">${vitals.heart_rate_bpm.toFixed(1)}<span class="result-unit">BPM</span></div>
+                    <div style="font-size: 12px; color: #999; margin-top: 5px;">Confidence: ${vitals.heart_rate_confidence}</div>
+                </div>
+                
+                <div class="result-card">
+                    <div class="result-label">😰 Stress Level</div>
+                    <div class="result-value">${vitals.stress_level ? vitals.stress_level.toFixed(1) : 'N/A'}<span class="result-unit">/10</span></div>
+                </div>
+                
+                <div class="result-card">
+                    <div class="result-label">📈 HRV (SDNN)</div>
+                    <div class="result-value">${vitals.sdnn_ms ? vitals.sdnn_ms.toFixed(1) : 'N/A'}<span class="result-unit">ms</span></div>
+                </div>
+                
+                <div class="result-card">
+                    <div class="result-label">🩺 Blood Pressure</div>
+                    <div class="result-value">${vitals.bp_systolic ? vitals.bp_systolic.toFixed(0) + '/' + vitals.bp_diastolic.toFixed(0) : 'N/A'}<span class="result-unit">mmHg</span></div>
+                    <div style="font-size: 12px; color: #999; margin-top: 5px;">⚠️ ${vitals.bp_note}</div>
+                </div>
+                
+                <div class="result-card ${riskClass}">
+                    <div class="result-label">⚠️ Risk Level</div>
+                    <div class="result-value">${risk.risk_level}</div>
+                    <div style="font-size: 12px; margin-top: 8px;">${risk.recommendation}</div>
+                </div>
+                
+                <div style="font-size: 12px; color: #999; margin-top: 20px; text-align: center;">
+                    Request ID: ${data.request_id}
+                </div>
+            `;
+            
+            results.style.display = 'block';
+            successDiv.innerHTML = '✅ Analysis complete!';
+            successDiv.style.display = 'block';
+        }
+        
+        // Check if API is running
+        fetch('http://localhost:8000/health')
+            .catch(() => {
+                errorDiv.textContent = '❌ API Server not running. Make sure FastAPI server is started at http://localhost:8000';
+                errorDiv.style.display = 'block';
+                analyzeBtn.disabled = true;
+            });
+    </script>
+</body>
+</html>
