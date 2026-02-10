@@ -338,7 +338,8 @@
 
         async function loadModels() {
             try {
-                const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                // Models are in current directory
+                const modelUrl = './';
                 // Using tiny face detector for speed
                 await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
                 // await faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelUrl); // Optional for more precision
