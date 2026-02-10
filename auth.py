@@ -290,9 +290,15 @@ def create_user(email: str, password: str, name: str, language: str = "en") -> T
     if not name or len(name.strip()) < 2:
         return False, "Please enter your full name"
     
+    # Force reload env vars to be sure
+    if not os.environ.get("SUPABASE_URL"):
+        load_dotenv(dotenv_path=Path(__file__).parent / '.env', override=True)
+
     # Check credentials first
     if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
-        return False, "Missing Supabase configuration. Check .env file."
+        debug_msg = f"Env loaded from {Path(__file__).parent / '.env'}, value: {bool(os.environ.get('SUPABASE_URL'))}"
+        print(f"DEBUG: {debug_msg}")
+        return False, f"Missing Supabase configuration. {debug_msg}"
 
     try:
         supabase = get_supabase_client()
@@ -339,9 +345,15 @@ def authenticate_user(email: str, password: str) -> Tuple[bool, Optional[User], 
     if not email or not password:
         return False, None, "Please enter both email and password"
     
+    # Force reload env vars to be sure
+    if not os.environ.get("SUPABASE_URL"):
+        load_dotenv(dotenv_path=Path(__file__).parent / '.env', override=True)
+
     # Check credentials first
     if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
-        return False, None, "Missing Supabase configuration. Check .env file."
+        debug_msg = f"Env loaded from {Path(__file__).parent / '.env'}, value: {bool(os.environ.get('SUPABASE_URL'))}"
+        print(f"DEBUG: {debug_msg}")
+        return False, None, f"Missing Supabase configuration. {debug_msg}"
 
     try:
         supabase = get_supabase_client()
