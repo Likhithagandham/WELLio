@@ -12,10 +12,3 @@ backgroundColor = "#F5F5F0"
 secondaryBackgroundColor = "#E8ECE6"
 textColor = "#2C3E30"
 font = "sans serif"
-
-# WebRTC Configuration for streamlit-webrtc
-[webrtc]
-iceServers = [
-    {urls = ["stun:stun.l.google.com:19302"]},
-    {urls = ["stun:stun1.l.google.com:19302"]},
-]

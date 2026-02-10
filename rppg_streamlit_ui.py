@@ -21,7 +21,8 @@ from typing import Optional
 
 # Import translations module
 from translations import get_text, get_available_languages, translate_dynamic, LANGUAGES
-from live_camera import live_camera_interface, process_recorded_video
+# Disabled for cloud deployment - requires streamlit-webrtc
+# from live_camera import live_camera_interface, process_recorded_video
 from streamlit_mic_recorder import speech_to_text
 from dotenv import load_dotenv
 
