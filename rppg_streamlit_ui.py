@@ -21,8 +21,8 @@ from typing import Optional
 
 # Import translations module
 from translations import get_text, get_available_languages, translate_dynamic, LANGUAGES
-# Browser-based camera recording (works on Streamlit Cloud)
-from browser_camera import live_camera_component, save_recorded_video
+# Native Cloud-Safe camera recording
+from live_camera import live_camera_interface
 from streamlit_mic_recorder import speech_to_text
 from dotenv import load_dotenv
 
@@ -1595,25 +1595,12 @@ uploaded_file = None
 recorded_file_path = None
 
 if recording_mode == "live":
-    # Show live camera component
-    st.subheader(f"📹 {t('live_recording_title')}")
-    st.caption(t("live_recording_subtitle"))
+    recorded_file_path = live_camera_interface()
     
-    # Use browser-based camera (HTML5 MediaRecorder API)
-    # Works on Streamlit Cloud without streamlit-webrtc!
-    video_data = live_camera_component(key="live_camera_recorder")
-    
-    if video_data:
-        # User completed recording - save the video
-        with st.spinner("Processing recorded video..."):
-            recorded_file_path = save_recorded_video(video_data)
-            
-            if recorded_file_path:
-                st.success("✅ Video recorded successfully!")
-            else:
-                st.error("❌ Error saving video. Please try again.")
+    if recorded_file_path:
+        st.success("✅ Video ready for analysis!")
     else:
-        st.info("💡 Click 'Start Camera' to begin recording")
+        st.info("💡 Follow the wizard steps to capture or upload your video.")
 
 else:
     uploaded_file = st.file_uploader(
