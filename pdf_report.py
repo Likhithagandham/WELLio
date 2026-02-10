@@ -262,32 +262,32 @@ def generate_health_report(session: SessionData, lang: str = "en") -> bytes:
         elements.append(Spacer(1, 0.1*inch))
     
     # ========================================================================
-    # SIGNAL VISUALIZATIONS
+    # SIGNAL VISUALIZATIONS (Removed per user request)
     # ========================================================================
     
-    if session.signal_plot or session.hrv_plot:
-        elements.append(PageBreak())
-        elements.append(Paragraph("Signal Analysis", heading_style))
-        
-        if session.signal_plot:
-            try:
-                img_data = base64.b64decode(session.signal_plot)
-                img_buffer = BytesIO(img_data)
-                img = RLImage(img_buffer, width=6*inch, height=4*inch)
-                elements.append(img)
-                elements.append(Spacer(1, 0.2*inch))
-            except Exception as e:
-                print(f"Error embedding signal plot: {e}")
-        
-        if session.hrv_plot:
-            try:
-                img_data = base64.b64decode(session.hrv_plot)
-                img_buffer = BytesIO(img_data)
-                img = RLImage(img_buffer, width=6*inch, height=3*inch)
-                elements.append(img)
-                elements.append(Spacer(1, 0.2*inch))
-            except Exception as e:
-                print(f"Error embedding HRV plot: {e}")
+    # if session.signal_plot or session.hrv_plot:
+    #     elements.append(PageBreak())
+    #     elements.append(Paragraph("Signal Analysis", heading_style))
+    #     
+    #     if session.signal_plot:
+    #         try:
+    #             img_data = base64.b64decode(session.signal_plot)
+    #             img_buffer = BytesIO(img_data)
+    #             img = RLImage(img_buffer, width=6*inch, height=4*inch)
+    #             elements.append(img)
+    #             elements.append(Spacer(1, 0.2*inch))
+    #         except Exception as e:
+    #             print(f"Error embedding signal plot: {e}")
+    #     
+    #     if session.hrv_plot:
+    #         try:
+    #             img_data = base64.b64decode(session.hrv_plot)
+    #             img_buffer = BytesIO(img_data)
+    #             img = RLImage(img_buffer, width=6*inch, height=3*inch)
+    #             elements.append(img)
+    #             elements.append(Spacer(1, 0.2*inch))
+    #         except Exception as e:
+    #             print(f"Error embedding HRV plot: {e}")
     
     # ========================================================================
     # DISCLAIMER

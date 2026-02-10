@@ -916,17 +916,17 @@ if HAVE_HISTORY and st.session_state.get("viewing_history", False):
                 
                 st.divider()
             
-            # Visualizations
-            if session.signal_plot or session.hrv_plot:
-                st.subheader(f"📈 {t('signal_processing_title')}")
-                
-                if session.signal_plot:
-                    st.image(base64_to_image(session.signal_plot), caption=t("filtered_ppg"))
-                
-                if session.hrv_plot:
-                    st.subheader(f"💓 {t('hrv_title')}")
-                    st.image(base64_to_image(session.hrv_plot), caption=t("rr_interval_analysis"))
-                    st.info(f"**{t('hrv_summary')}:** SDNN: {session.hrv_sdnn:.1f} ms | pNN50: {session.hrv_pnn50:.1f}% | {t('beats_detected')}: {session.rr_intervals_count}")
+            # Visualizations (Removed per user request)
+            # if session.signal_plot or session.hrv_plot:
+            #     st.subheader(f"📈 {t('signal_processing_title')}")
+            #     
+            #     if session.signal_plot:
+            #         st.image(base64_to_image(session.signal_plot), caption=t("filtered_ppg"))
+            #     
+            #     if session.hrv_plot:
+            #         st.subheader(f"💓 {t('hrv_title')}")
+            #         st.image(base64_to_image(session.hrv_plot), caption=t("rr_interval_analysis"))
+            #         st.info(f"**{t('hrv_summary')}:** SDNN: {session.hrv_sdnn:.1f} ms | pNN50: {session.hrv_pnn50:.1f}% | {t('beats_detected')}: {session.rr_intervals_count}")
             
             # PDF Download for historical session
             st.divider()
@@ -2112,83 +2112,83 @@ if uploaded_file is not None or recorded_file_path is not None:
             st.divider()
             
             # ================================================================
-            # SIGNAL VISUALIZATIONS
+            # SIGNAL VISUALIZATIONS (Removed per user request)
             # ================================================================
             
-            st.subheader("📈 Signal Processing & Analysis")
+            # st.subheader("📈 Signal Processing & Analysis")
             
             # Main plots
-            fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+            # fig, axs = plt.subplots(2, 1, figsize=(12, 8))
             
             # Filtered signal
-            axs[0].plot(filtered_signal.fused_signal, linewidth=1.5, color='green', alpha=0.8)
-            axs[0].fill_between(range(len(filtered_signal.fused_signal)), 
-                               filtered_signal.fused_signal, alpha=0.2, color='green')
-            axs[0].set_title("Filtered PPG Signal (Green Channel)", fontsize=12, fontweight='bold')
-            axs[0].set_xlabel("Frame")
-            axs[0].set_ylabel("Normalized Intensity")
-            axs[0].grid(True, alpha=0.3)
+            # axs[0].plot(filtered_signal.fused_signal, linewidth=1.5, color='green', alpha=0.8)
+            # axs[0].fill_between(range(len(filtered_signal.fused_signal)), 
+            #                    filtered_signal.fused_signal, alpha=0.2, color='green')
+            # axs[0].set_title("Filtered PPG Signal (Green Channel)", fontsize=12, fontweight='bold')
+            # axs[0].set_xlabel("Frame")
+            # axs[0].set_ylabel("Normalized Intensity")
+            # axs[0].grid(True, alpha=0.3)
             
             # Power spectrum
             # psd_freqs is correct in new backend
-            valid_band = ((filtered_signal.psd_freqs >= 0.75) & 
-                         (filtered_signal.psd_freqs <= 3.0))
-            axs[1].semilogy(filtered_signal.psd_freqs, filtered_signal.psd, 
-                           linewidth=1.5, color='blue', label='PSD')
+            # valid_band = ((filtered_signal.psd_freqs >= 0.75) & 
+            #              (filtered_signal.psd_freqs <= 3.0))
+            # axs[1].semilogy(filtered_signal.psd_freqs, filtered_signal.psd, 
+            #                linewidth=1.5, color='blue', label='PSD')
             
-            if vitals.heart_rate_bpm:
-                peak_freq = vitals.heart_rate_bpm / 60.0
-                axs[1].axvline(peak_freq, color='red', linestyle='--', linewidth=2, 
-                               label=f'Peak ≈ {vitals.heart_rate_bpm:.1f} BPM')
+            # if vitals.heart_rate_bpm:
+            #     peak_freq = vitals.heart_rate_bpm / 60.0
+            #     axs[1].axvline(peak_freq, color='red', linestyle='--', linewidth=2, 
+            #                    label=f'Peak ≈ {vitals.heart_rate_bpm:.1f} BPM')
             
-            axs[1].set_title("Power Spectral Density (Welch)", fontsize=12, fontweight='bold')
-            axs[1].set_xlabel("Frequency (Hz)")
-            axs[1].set_ylabel("Power (log scale)")
-            axs[1].legend()
-            axs[1].grid(True, alpha=0.3, which='both')
-            axs[1].set_xlim([0, 4])
+            # axs[1].set_title("Power Spectral Density (Welch)", fontsize=12, fontweight='bold')
+            # axs[1].set_xlabel("Frequency (Hz)")
+            # axs[1].set_ylabel("Power (log scale)")
+            # axs[1].legend()
+            # axs[1].grid(True, alpha=0.3, which='both')
+            # axs[1].set_xlim([0, 4])
             
-            st.pyplot(fig)
+            # st.pyplot(fig)
             
             # RR histogram
-            if vitals.rr_intervals.size > 0:
-                st.subheader("💓 Heart Rate Variability (RR Intervals)")
-                
-                fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-                
-                # Histogram
-                ax1.hist(vitals.rr_intervals, bins=max(5, len(vitals.rr_intervals)//3), 
-                        color='steelblue', edgecolor='black', alpha=0.7)
-                ax1.set_title("RR Interval Distribution", fontweight='bold')
-                ax1.set_xlabel("RR Interval (ms)")
-                ax1.set_ylabel("Frequency")
-                ax1.grid(True, alpha=0.3)
-                
-                # Time series
-                ax2.plot(vitals.rr_intervals, marker='o', linestyle='-', 
-                        color='darkgreen', markersize=4, linewidth=1)
-                ax2.set_title("RR Intervals Over Time", fontweight='bold')
-                ax2.set_xlabel("Beat #")
-                ax2.set_ylabel("RR Interval (ms)")
-                ax2.grid(True, alpha=0.3)
-                
-                st.pyplot(fig2)
-                
-                # Calculate pNN50
-                pnn50 = 0.0
-                if vitals.rr_intervals.size > 1:
-                    rr_diff = np.abs(np.diff(vitals.rr_intervals))
-                    pnn50 = 100.0 * np.sum(rr_diff > 0.05) / len(rr_diff)
-
-                st.info(f"""
-                **HRV Summary:**
-                - **# of beats detected:** {len(vitals.rr_intervals) + 1}
-                - **SDNN (std dev):** {vitals.sdnn:.1f} ms
-                - **Mean RR:** {np.mean(vitals.rr_intervals)*1000:.0f} ms
-                - **pNN50:** {pnn50:.1f}%
-                """)
-            else:
-                st.warning("⚠️  Not enough beats detected for HRV analysis. Try a longer or clearer video.")
+            # if vitals.rr_intervals.size > 0:
+            #     st.subheader("💓 Heart Rate Variability (RR Intervals)")
+            #     
+            #     fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+            #     
+            #     # Histogram
+            #     ax1.hist(vitals.rr_intervals, bins=max(5, len(vitals.rr_intervals)//3), 
+            #             color='steelblue', edgecolor='black', alpha=0.7)
+            #     ax1.set_title("RR Interval Distribution", fontweight='bold')
+            #     ax1.set_xlabel("RR Interval (ms)")
+            #     ax1.set_ylabel("Frequency")
+            #     ax1.grid(True, alpha=0.3)
+            #     
+            #     # Time series
+            #     ax2.plot(vitals.rr_intervals, marker='o', linestyle='-', 
+            #             color='darkgreen', markersize=4, linewidth=1)
+            #     ax2.set_title("RR Intervals Over Time", fontweight='bold')
+            #     ax2.set_xlabel("Beat #")
+            #     ax2.set_ylabel("RR Interval (ms)")
+            #     ax2.grid(True, alpha=0.3)
+            #     
+            #     st.pyplot(fig2)
+            #     
+            #     # Calculate pNN50
+            #     pnn50 = 0.0
+            #     if vitals.rr_intervals.size > 1:
+            #         rr_diff = np.abs(np.diff(vitals.rr_intervals))
+            #         pnn50 = 100.0 * np.sum(rr_diff > 0.05) / len(rr_diff)
+            #
+            #     st.info(f"""
+            #     **HRV Summary:**
+            #     - **# of beats detected:** {len(vitals.rr_intervals) + 1}
+            #     - **SDNN (std dev):** {vitals.sdnn:.1f} ms
+            #     - **Mean RR:** {np.mean(vitals.rr_intervals)*1000:.0f} ms
+            #     - **pNN50:** {pnn50:.1f}%
+            #     """)
+            # else:
+            #     st.warning("⚠️  Not enough beats detected for HRV analysis. Try a longer or clearer video.")
             
             # Advanced plots
 
