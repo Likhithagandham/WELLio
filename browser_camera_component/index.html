@@ -338,16 +338,30 @@
 
         async function loadModels() {
             try {
-                // Models are in current directory
-                const modelUrl = './';
-                // Using tiny face detector for speed
-                await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
-                // await faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelUrl); // Optional for more precision
-                console.log("Face API Models loaded");
+                // Check if faceapi is loaded
+                if (typeof faceapi === 'undefined') {
+                    throw new Error("face-api.js library not loaded");
+                }
+
+                console.log("Attempting to load models...");
+
+                // Try Local First
+                try {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri('./');
+                    console.log("Models loaded from local path");
+                } catch (localErr) {
+                    console.warn("Local model load failed, trying CDN...", localErr);
+                    // Fallback to CDN
+                    await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/');
+                    console.log("Models loaded from CDN");
+                }
+
                 isModelsLoaded = true;
+                // document.getElementById('status-bar').textContent = "AI Ready";
             } catch (err) {
                 console.error("Error loading Face Models", err);
-                document.getElementById('status-bar').textContent = "⚠️ AI Load Failed. Manual mode only.";
+                document.getElementById('status-bar').textContent = "⚠️ AI Error: " + err.message;
+                document.getElementById('status-bar').className = 'bad';
             }
         }
 
