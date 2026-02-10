@@ -170,7 +170,7 @@ TRANSLATIONS = {
         # Health Insights
         "health_insights_title": "Health Insights (AI-Generated)",
         "recommendations_title": "Personalized Recommendations",
-        "symptoms_watch_title": "Symptoms to Watch",
+        "symptoms_watch_title": "Symptoms to Watch ",
         
         # Signal Processing
         "signal_processing_title": "Signal Processing & Analysis",
