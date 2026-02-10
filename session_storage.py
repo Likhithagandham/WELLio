@@ -40,9 +40,16 @@ class SessionData:
     heart_rate: float
     heart_rate_confidence: str
     stress_level: float
+    stress_label: str
+    stress_score: Optional[int]
+    stress_reason: str
     bp_systolic: Optional[float]
     bp_diastolic: Optional[float]
-    spo2: Optional[float]
+    bp_label: str = "Unavailable"
+    bp_reason: str = ""
+    bp_confidence: int = 0
+    bp_disclaimer: str = ""
+    spo2: Optional[float] = None
     hrv_sdnn: float
     hrv_pnn50: float
     rr_intervals_count: int

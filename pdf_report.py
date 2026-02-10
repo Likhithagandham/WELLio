@@ -22,6 +22,7 @@ from typing import Optional
 
 from session_storage import SessionData
 from translations import get_text
+from rppg_refactored import get_bp_category
 
 
 def generate_health_report(session: SessionData, lang: str = "en") -> bytes:
@@ -164,13 +165,19 @@ def generate_health_report(session: SessionData, lang: str = "en") -> bytes:
     
     elements.append(Paragraph("Vital Signs", heading_style))
     
+    # Logic for BP Label
+    bp_display_label = "N/A"
+    if session.bp_systolic is not None and session.bp_diastolic is not None:
+        # Always recalculate to ensure strict rules apply retroactively
+        bp_display_label = get_bp_category(session.bp_systolic, session.bp_diastolic)
+
     vitals_data = [
         ["Metric", "Value", "Status"],
         ["Heart Rate (rPPG)", f"{session.heart_rate:.1f} BPM", get_hr_label(session.heart_rate)],
         ["Stress Index", f"{session.stress_level:.1f}/10", get_stress_label(session.stress_level)],
         ["Blood Pressure", 
          f"{session.bp_systolic:.0f}/{session.bp_diastolic:.0f} mmHg" if session.bp_systolic else "N/A",
-         get_bp_label(session.bp_systolic) if session.bp_systolic else "N/A"],
+         bp_display_label],
         ["SpO₂", f"{session.spo2:.1f}%" if session.spo2 else "N/A",
          get_spo2_label(session.spo2) if session.spo2 else "N/A"],
         ["HRV (SDNN)", f"{session.hrv_sdnn:.1f} ms", f"{session.rr_intervals_count} beats analyzed"]
@@ -346,20 +353,7 @@ def get_stress_label(stress: float, lang: str = "en") -> str:
         return get_text("stress_very_high", lang)
 
 
-def get_bp_label(systolic: Optional[float], lang: str = "en") -> str:
-    """Get blood pressure label from systolic value"""
-    if systolic is None:
-        return get_text("na", lang)
-    if systolic < 90:
-        return get_text("bp_low", lang)
-    elif systolic <= 119:
-        return get_text("bp_normal", lang)
-    elif systolic <= 129:
-        return get_text("bp_elevated", lang)
-    elif systolic <= 139:
-        return get_text("bp_stage1", lang)
-    else:
-        return get_text("bp_stage2", lang)
+
 
 
 def get_spo2_label(spo2: Optional[float], lang: str = "en") -> str:

@@ -73,14 +73,33 @@ class FilteredSignal:
     signal_quality_score: float
 
 @dataclass
+class StressResult:
+    label: str
+    level: Optional[str]
+    score: Optional[int]
+    reason: str
+    signals_used: List[str]
+
+@dataclass
+class BPResult:
+    systolic: int
+    diastolic: int
+    label: str
+    reason: str
+    confidence: int
+    disclaimer: str = "This blood pressure value is an experimental estimate derived from optical pulse signals and physiological correlations. It is not a medical measurement."
+
+@dataclass
 class VitalsEstimate:
     heart_rate_bpm: Optional[float]
     heart_rate_valid: bool
     rr_intervals: np.ndarray
     sdnn: Optional[float]
-    stress_level: Optional[float]
+    stress_level: Optional[float] # Kept for compatibility (0-10)
+    stress_details: Optional[StressResult] # New structured details
     bp_systolic: Optional[float]
     bp_diastolic: Optional[float]
+    bp_details: Optional[BPResult] # New structured details
     spo2: Optional[float]
 
 @dataclass
@@ -260,6 +279,231 @@ def process_signals(sig: MultiROISignals) -> FilteredSignal:
 
     return FilteredSignal(fused, sig.fps, freqs, psd, confidence, quality)
 
+def calculate_stress_score(hrv_sdnn: Optional[float], rr_interval_ms: Optional[float]) -> StressResult:
+    """
+    Compute stress score based on HRV (SDNN) and RR Interval.
+    
+    Thresholds:
+    - HRV (SDNN): Normal >= 30, Low 20-29, Very Low < 20
+    - RR Interval: Normal 600-1000, Elevated 500-599, Highly Elevated < 500
+    
+    Scoring:
+    - Normal (Score 2): HRV Normal AND RR Normal
+    - Mild Stress (Score 5): HRV Low OR RR Elevated
+    - High Stress (Score 8): HRV Very Low AND RR Highly Elevated
+    """
+    signals_used = []
+    if hrv_sdnn is not None: signals_used.append("HRV")
+    if rr_interval_ms is not None: signals_used.append("RR")
+    
+    if not signals_used:
+        return StressResult("Unavailable", None, None, "Insufficient signal for stress computation", [])
+        
+    # Classify HRV
+    hrv_status = "Normal"
+    if hrv_sdnn is not None:
+        if hrv_sdnn < 20: hrv_status = "Very Low"
+        elif hrv_sdnn < 30: hrv_status = "Low"
+        else: hrv_status = "Normal"
+        
+    # Classify RR
+    rr_status = "Normal"
+    if rr_interval_ms is not None:
+        if rr_interval_ms < 500: rr_status = "Highly Elevated"
+        elif rr_interval_ms < 600: rr_status = "Elevated"
+        else: rr_status = "Normal"
+        
+    # Compute Score
+    score = 2
+    label = "Normal"
+    level = "NORMAL"
+    reason = "Vitals within normal range"
+    
+    # Logic
+    if hrv_status == "Very Low" and rr_status == "Highly Elevated":
+        score = 8
+        label = "High Stress"
+        level = "HIGH"
+        reason = "Very low HRV and highly elevated RR interval detected"
+    elif hrv_status == "Low" or rr_status == "Elevated" or hrv_status == "Very Low" or rr_status == "Highly Elevated":
+        # Any deviation that isn't the worst case falls here (conservative)
+        # Re-evaluating exact logic from prompt:
+        # Mild: HRV ↓ OR RR ↑
+        # High: HRV ↓↓ AND RR ↑↑
+        # So "Very Low" OR "Highly Elevated" alone is at least Mild.
+        score = 5
+        label = "Mild Stress"
+        level = "MILD"
+        reason = "Low HRV or elevated RR interval detected"
+        
+    # Refine High Stress to match "AND" condition strictly if both present
+    if "HRV" in signals_used and "RR" in signals_used:
+        if hrv_status == "Very Low" and rr_status == "Highly Elevated":
+            score = 8
+            label = "High Stress"
+            level = "HIGH"
+            reason = "Very low HRV and highly elevated RR interval detected"
+    
+    # Handle single signal cases
+    # If only HRV available:
+    if "HRV" in signals_used and "RR" not in signals_used:
+        if hrv_status == "Very Low":
+             score = 8; label="High Stress"; level="HIGH"; reason="Very low HRV detected (RR unavailable)"
+        elif hrv_status == "Low":
+             score = 5; label="Mild Stress"; level="MILD"; reason="Low HRV detected (RR unavailable)"
+             
+    # If only RR available
+    if "RR" in signals_used and "HRV" not in signals_used:
+        if rr_status == "Highly Elevated":
+            score = 8; label="High Stress"; level="HIGH"; reason="Highly elevated RR interval detected (HRV unavailable)"
+        elif rr_status == "Elevated":
+            score = 5; label="Mild Stress"; level="MILD"; reason="Elevated RR interval detected (HRV unavailable)"
+
+    return StressResult(label, level, score, reason, signals_used)
+
+def get_bp_category(sbp: Optional[float], dbp: Optional[float]) -> str:
+    """
+    Get BP Label based on Max Severity Rule.
+    
+    Severity Order: Low < Normal < High-Normal < High
+    
+    Step 1: Classify SBP
+    < 90       -> Low (0)
+    90-119     -> Normal (1)
+    120-139    -> High-Normal (2)
+    >= 140     -> High (3)
+    
+    Step 2: Classify DBP
+    < 60       -> Low (0)
+    60-79      -> Normal (1)
+    80-89      -> High-Normal (2)
+    >= 90      -> High (3)
+    
+    Step 3: Label = Category with Max Severity
+    """
+    if sbp is None and dbp is None:
+        return "Unavailable"
+
+    # Define categories and severity
+    CAT_LOW = 0
+    CAT_NORMAL = 1
+    CAT_HIGH_NORMAL = 2
+    CAT_HIGH = 3
+    
+    severity_map = {
+        CAT_LOW: "⬇️ Low",
+        CAT_NORMAL: "✅ Normal",
+        CAT_HIGH_NORMAL: "⬆️ High-Normal",
+        CAT_HIGH: "⬆️ High"
+    }
+
+    # Classify SBP
+    s_sev = -1
+    if sbp is not None:
+        if sbp < 90: s_sev = CAT_LOW
+        elif sbp < 120: s_sev = CAT_NORMAL
+        elif sbp < 140: s_sev = CAT_HIGH_NORMAL
+        else: s_sev = CAT_HIGH
+
+    # Classify DBP
+    d_sev = -1
+    if dbp is not None:
+        if dbp < 60: d_sev = CAT_LOW
+        elif dbp < 80: d_sev = CAT_NORMAL
+        elif dbp < 90: d_sev = CAT_HIGH_NORMAL
+        else: d_sev = CAT_HIGH
+
+    # Combine
+    final_sev = -1
+    
+    if s_sev != -1 and d_sev != -1:
+        final_sev = max(s_sev, d_sev)
+    elif s_sev != -1:
+        final_sev = s_sev
+    elif d_sev != -1:
+        final_sev = d_sev
+        
+    return severity_map.get(final_sev, "Unavailable")
+
+def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float], 
+                 stress_level: Optional[str], rr_interval_ms: Optional[float], 
+                 confidence: int) -> BPResult:
+    """
+    Heuristic BP estimation. NOT A MEDICAL MEASUREMENT.
+    Base: 115/75
+    Modifiers: HR, HRV, Stress, RR
+    """
+    # 1. Base Values
+    sbp = 115
+    dbp = 75
+    reasons = []
+
+    # 2. Modifiers
+    
+    # Heart Rate
+    if heart_rate:
+        if heart_rate > 100:
+            sbp += 10; dbp += 5
+            reasons.append("Elevated HR")
+        elif heart_rate < 50:
+            sbp -= 10; dbp -= 5
+            reasons.append("Low HR")
+
+    # HRV
+    if hrv_sdnn:
+        if hrv_sdnn < 20:
+            sbp += 10
+            reasons.append("Very Low HRV")
+        elif hrv_sdnn < 30: # 20-29
+            sbp += 5
+            reasons.append("Low HRV")
+
+    # Stress Level (from backend calculation)
+    if stress_level:
+        if stress_level == "MILD":
+            sbp += 5; dbp += 3
+            reasons.append("Mild Stress")
+        elif stress_level == "HIGH":
+            sbp += 15; dbp += 8
+            reasons.append("High Stress")
+
+    # RR Interval
+    if rr_interval_ms:
+        if rr_interval_ms < 500:
+            sbp += 10
+            reasons.append("Very Low RR")
+        elif rr_interval_ms < 600:
+            sbp += 5
+            reasons.append("Low RR")
+
+    # 3. Clamping
+    sbp = max(80, min(200, sbp))
+    dbp = max(50, min(130, dbp))
+
+    # 4. Labeling
+    # SBP < 90 OR DBP < 60 -> Low
+    # SBP 90–120 AND DBP 60–80 -> Normal
+    # SBP 120–140 OR DBP 80–90 -> High-Normal
+    # SBP > 140 OR DBP > 90 -> High
+    
+    label = get_bp_category(sbp, dbp)
+
+    reason = "Experimental estimate based on physiological metrics."
+    if reasons:
+        reason = f"Estimate adjusted due to: {', '.join(reasons)}."
+
+    # Signal Confidence Handling
+    if confidence < 55:
+        reason += " [Low signal confidence - unreliable]"
+
+    return BPResult(
+        systolic=int(sbp), 
+        diastolic=int(dbp), 
+        label=label, 
+        reason=reason, 
+        confidence=confidence
+    )
+
 # ============================================================
 # VITALS
 # ============================================================
@@ -271,24 +515,28 @@ def estimate_vitals(sig: MultiROISignals, filt: FilteredSignal) -> VitalsEstimat
     rr = rr_from_peaks(filt.fused_signal, sig.fps, hr) if hr_valid else np.array([])
     sdnn = float(np.std(rr)*1000) if len(rr)>=5 else None
 
-    stress = None
-    if sdnn:
-        stress = 8 if sdnn < 20 else 4 if sdnn < 50 else 1
+    # New Stress Logic
+    stress_res = calculate_stress_score(sdnn, np.mean(rr)*1000 if len(rr)>0 else None)
+    stress_level = float(stress_res.score) if stress_res.score is not None else None
 
-    bp_s = 120.0
-    if hr and hr < 80:
-        bp_s = 120.0
-    else:
-        bp_s = 135.0
-        
-    bp_d = bp_s - 40.0
+    # New BP Logic
+    bp_res = calculate_bp(
+        heart_rate=hr,
+        hrv_sdnn=sdnn,
+        stress_level=stress_res.level, # "NORMAL", "MILD", "HIGH"
+        rr_interval_ms=np.mean(rr)*1000 if len(rr)>0 else None,
+        confidence=int(filt.confidence_percent)
+    )
+    
+    bp_s = float(bp_res.systolic)
+    bp_d = float(bp_res.diastolic)
 
     spo2 = None
     if sig.g_forehead.size > 0:
         val = np.std(sig.g_forehead)/ (np.mean(sig.g_forehead) + 1e-9)
         spo2 = float(np.clip(104 - 18*val, 70, 99))
 
-    return VitalsEstimate(hr, hr_valid, rr, sdnn, stress, bp_s, bp_d, spo2)
+    return VitalsEstimate(hr, hr_valid, rr, sdnn, stress_level, stress_res, bp_s, bp_d, bp_res, spo2)
 
 # ============================================================
 # RISK

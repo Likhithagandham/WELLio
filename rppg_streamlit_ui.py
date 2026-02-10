@@ -31,7 +31,8 @@ load_dotenv(override=True)
 
 from rppg_refactored import (
     estimate_vitals_from_video,
-    HAVE_MEDIAPIPE
+    HAVE_MEDIAPIPE,
+    get_bp_category
 )
 try:
     from health_insights import get_health_insights, GROQ_API_KEY
@@ -888,12 +889,43 @@ if HAVE_HISTORY and st.session_state.get("viewing_history", False):
                 )
             
             with col2:
-                st.metric(t("stress_index"), f"{session.stress_level:.1f}",
-                         help=t("experimental_stress"))
+                # Use stored backend stress data if available
+                stress_lbl = getattr(session, "stress_label", "Unavailable")
+                stress_scr = getattr(session, "stress_score", None)
+                
+                # Fallback for old sessions
+                if stress_lbl == "Unavailable" and hasattr(session, "stress_level"):
+                     val = session.stress_level
+                     if val < 2: stress_lbl = "Normal"
+                     elif val < 5: stress_lbl = "Mild Stress" 
+                     else: stress_lbl = "High Stress"
+                
+                stress_display = f"{stress_lbl}"
+                if stress_scr is not None:
+                    stress_display += f" ({stress_scr}/10)"
+                    
+                st.metric(t("stress_index"), stress_display,
+                         help=getattr(session, "stress_reason", t("experimental_stress")))
             
             with col3:
-                if session.bp_systolic and session.bp_diastolic:
-                    st.metric(t("estimated_bp"), f"{session.bp_systolic:.0f}/{session.bp_diastolic:.0f} mmHg")
+                sbp = session.bp_systolic
+                dbp = session.bp_diastolic
+                
+                if sbp and dbp:
+                    bp_val = f"{sbp:.0f}/{dbp:.0f} mmHg"
+                    # Always recalculate label for consistency
+                    bp_lbl = get_bp_category(sbp, dbp)
+                    
+                    if "High-Normal" in bp_lbl: bp_color = "#f59e0b"
+                    elif "High" in bp_lbl: bp_color = "#dc2626"
+                    elif "Normal" in bp_lbl: bp_color = "#16a34a"
+                    elif "Low" in bp_lbl: bp_color = "#3b82f6"
+                    
+                    st.metric(t("estimated_bp"), bp_val)
+                    st.markdown(
+                        f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{bp_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{bp_lbl}</div>",
+                        unsafe_allow_html=True
+                    )
                 else:
                     st.metric(t("estimated_bp"), t("na"))
             
@@ -1058,6 +1090,11 @@ if HAVE_HISTORY and st.session_state.get("viewing_all_history", False):
                         lbl = "N/A"
                         
                     st.caption(f"{lbl}")
+                    
+                    # Stress Label from backend
+                    s_lbl = getattr(session, "stress_label", "N/A")
+                    if s_lbl == "Unavailable": s_lbl = "N/A"
+                    st.caption(f"Stress: {s_lbl}")
                     st.caption(f"Risk Level: {session.risk_level}")
                     
                 with c3:
@@ -1515,16 +1552,7 @@ if HAVE_CHATBOT and HAVE_GEMINI:
                         st.rerun()
             
         # Action buttons (Inside Dialog)
-        st.divider()
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button(f"🗑️ {t('chatbot_clear')}", type="secondary", use_container_width=True):
-                clear_chat_history(username)
-                st.session_state["chat_messages"] = []
-                st.rerun()
-        with col2:
-            if st.button(f"📹 {t('go_to_upload')}", type="primary", use_container_width=True):
-                st.rerun() # Closes dialog
+
 
 
 
@@ -1740,105 +1768,85 @@ if uploaded_file is not None or recorded_file_path is not None:
             
             # Stress Index (0–10) — Experimental
             with col2:
-                if not np.isnan(vitals.stress_level):
-                    st.metric(
-                        t("stress_index"),
-                        f"{vitals.stress_level:.1f}",
-                        help=t("experimental_stress")
-                    )
+                # STRESS
+                # Use backend computed details
+                stress_details = vitals.stress_details
+                if stress_details:
+                     s_label = stress_details.label
+                     s_score = stress_details.score
+                     s_reason = stress_details.reason
+                     
+                     # Color
+                     if s_score is not None:
+                         if s_score <= 2: s_color = "#16a34a" # Green
+                         elif s_score <= 5: s_color = "#f59e0b" # Orange
+                         else: s_color = "#dc2626" # Red
+                     else:
+                         s_color = "#6b7280"
                 else:
-                    st.metric(t("stress_index"), t("na"))
+                     s_label = "Unavailable"
+                     s_score = None
+                     s_reason = "Insufficient data"
+                     s_color = "#6b7280"
 
-                # Label below stress index according to ranges:
-                # 0–2 → Very Low Stress
-                # 3–4 → Low Stress
-                # 5–6 → Moderate Stress
-                # 7–8 → High Stress
-                # 9–10 → Very High Stress
-                try:
-                    stress_val = float(vitals.stress_level)
-                except Exception:
-                    stress_val = None
-
-                if stress_val is None or np.isnan(stress_val):
-                    stress_label = t("na")
-                else:
-                    if stress_val <= 2:
-                        stress_label = t("stress_very_low")
-                    elif stress_val <= 4:
-                        stress_label = t("stress_low")
-                    elif stress_val <= 6:
-                        stress_label = t("stress_moderate")
-                    elif stress_val <= 8:
-                        stress_label = t("stress_high")
-                    else:
-                        stress_label = t("stress_very_high")
-
-                stress_color_map = {
-                    "Very Low Stress": "#16a34a",
-                    "Low Stress": "#34d399",
-                    "Moderate Stress": "#f59e0b",
-                    "High Stress": "#f97316",
-                    "Very High Stress": "#dc2626",
-                    "N/A": "#6b7280"
-                }
-                s_color = stress_color_map.get(stress_label, "#6b7280")
+                st.metric(t("stress_index"), 
+                          f"{s_label} ({s_score}/10)" if s_score is not None else s_label,
+                          help=s_reason)
+                
                 st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{s_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{stress_label}</div>",
+                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{s_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{s_label}</div>",
                     unsafe_allow_html=True
                 )
+
+
             
             # (HRV hidden from top summary per user request)
             
             # Estimated Blood Pressure (Experimental — Not Clinical)
+            # Estimated Blood Pressure
             with col3:
-                if vitals.bp_systolic is not None and vitals.bp_diastolic is not None:
+                # Use backend details
+                bp_details = vitals.bp_details
+                
+                if bp_details:
+                    sbp = bp_details.systolic
+                    dbp = bp_details.diastolic
+                    sbp = bp_details.systolic
+                    dbp = bp_details.diastolic
+                    bp_reason = bp_details.reason
+                    bp_conf = bp_details.confidence
+                    
+                    # Always recalculate label to ensure consistency (overriding potentially stale session state)
+                    bp_label = get_bp_category(sbp, dbp)
+                    
                     st.metric(
-                        t("estimated_bp_experimental"),
-                        f"{vitals.bp_systolic:.0f}/{vitals.bp_diastolic:.0f} mmHg",
-                        help=vitals.bp_note
+                        t("estimated_bp"),
+                        f"{sbp}/{dbp} mmHg",
+                        help=f"{bp_reason} (Confidence: {bp_conf}%)"
                     )
+                    
+                    # Color map
+                    bp_color = "#6b7280"
+                    if "High-Normal" in bp_label: bp_color = "#f59e0b"
+                    elif "High" in bp_label: bp_color = "#dc2626"
+                    elif "Normal" in bp_label: bp_color = "#16a34a"
+                    elif "Low" in bp_label: bp_color = "#3b82f6"
+                    
+                    st.markdown(
+                        f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{bp_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{bp_label}</div>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    # Alert for low confidence
+                    if bp_conf < 55:
+                        st.caption("⚠️ Low signal confidence")
+                        
                 else:
-                    st.metric(t("estimated_bp_experimental"), t("na"))
+                    # Fallback (should typically have value if HR exists, but safe guard)
+                    st.metric(t("estimated_bp"), t("na"))
 
-                # Label below BP according to systolic ranges:
-                # Low: < 90
-                # Normal: 90–119
-                # Elevated: 120–129
-                # Stage 1 (High): 130–139
-                # Stage 2 (High): >= 140
-                try:
-                    sbp = float(vitals.bp_systolic) if vitals.bp_systolic is not None else None
-                except Exception:
-                    sbp = None
-
-                if sbp is None or np.isnan(sbp):
-                    bp_label = t("na")
-                else:
-                    if sbp < 90:
-                        bp_label = t("bp_low")
-                    elif sbp <= 119:
-                        bp_label = t("bp_normal")
-                    elif sbp <= 129:
-                        bp_label = t("bp_elevated")
-                    elif sbp <= 139:
-                        bp_label = t("bp_stage1")
-                    else:
-                        bp_label = t("bp_stage2")
-
-                bp_color_map = {
-                    "Low": "#60a5fa",
-                    "Normal": "#16a34a",
-                    "Elevated": "#f59e0b",
-                    "Stage 1 (High)": "#f97316",
-                    "Stage 2 (High)": "#dc2626",
-                    "N/A": "#6b7280"
-                }
-                bp_color = bp_color_map.get(bp_label, "#6b7280")
-                st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{bp_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{bp_label}</div>",
-                    unsafe_allow_html=True
-                )
+                # Disclaimer Tooltip
+                st.caption(f"ℹ️ *{t('experimental_bp_disclaimer') if 'experimental_bp_disclaimer' in locals() else 'Experimental Estimate'}*")
 
             # Estimated SpO2
             with col4:
@@ -2350,8 +2358,15 @@ if uploaded_file is not None or recorded_file_path is not None:
                         heart_rate=float(vitals.heart_rate_bpm),
                         heart_rate_confidence=vitals.heart_rate_confidence,
                         stress_level=float(vitals.stress_level) if not np.isnan(vitals.stress_level) else 5.0,
+                        stress_label=vitals.stress_details.label if vitals.stress_details else "Unavailable",
+                        stress_score=vitals.stress_details.score if vitals.stress_details else None,
+                        stress_reason=vitals.stress_details.reason if vitals.stress_details else "",
                         bp_systolic=float(vitals.bp_systolic) if vitals.bp_systolic is not None else None,
                         bp_diastolic=float(vitals.bp_diastolic) if vitals.bp_diastolic is not None else None,
+                        bp_label=vitals.bp_details.label if vitals.bp_details else "Unavailable",
+                        bp_reason=vitals.bp_details.reason if vitals.bp_details else "",
+                        bp_confidence=vitals.bp_details.confidence if vitals.bp_details else 0,
+                        bp_disclaimer=vitals.bp_details.disclaimer if vitals.bp_details else "",
                         spo2=float(vitals.spo2) if vitals.spo2 is not None else None,
                         hrv_sdnn=float(vitals.sdnn),
                         hrv_pnn50=float(100.0 * np.sum(np.abs(np.diff(vitals.rr_intervals)) > 0.05) / len(np.diff(vitals.rr_intervals))) if vitals.rr_intervals.size > 1 else 0.0,
