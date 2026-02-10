@@ -8,7 +8,8 @@ from typing import List, Tuple, Optional
 
 # Absolute path to the component directory
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-COMPONENT_DIR = os.path.join(PARENT_DIR, "vrec_static")
+# Ensure we use an absolute path for Cloud stability
+COMPONENT_DIR = os.path.abspath(os.path.join(PARENT_DIR, "vrec_static"))
 
 # Declare the component
 if not os.path.exists(os.path.join(COMPONENT_DIR, "index.html")):
