@@ -258,7 +258,12 @@ def save_recorded_video(base64_data: str) -> str:
     Save base64-encoded video data to a temporary file.
     Returns path to the saved video file.
     """
-    if not base64_data:
+    # Check if we have valid data
+    if not base64_data or not isinstance(base64_data, str):
+        return None
+    
+    # Skip if it's an empty string
+    if len(base64_data) < 100:  # Base64 video should be much larger
         return None
     
     try:
