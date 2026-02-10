@@ -13,244 +13,25 @@ import tempfile
 import os
 from pathlib import Path
 
-def get_camera_html():
-    """
-    Returns HTML/JavaScript for browser-based camera recording.
-    Uses MediaRecorder API with face detection overlay.
-    """
-    html_code = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            #camera-container {
-                position: relative;
-                width: 100%;
-                max-width: 640px;
-                margin: 0 auto;
-            }
-            #video {
-                width: 100%;
-                border-radius: 10px;
-                transform: scaleX(-1); /* Mirror effect */
-            }
-            #canvas {
-                display: none;
-            }
-            .overlay {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                border: 4px solid #FFA500;
-                border-radius: 50%;
-                width: 250px;
-                height: 350px;
-                pointer-events: none;
-            }
-            .overlay.recording {
-                border-color: #FF0000;
-                animation: pulse 1s infinite;
-            }
-            .overlay.aligned {
-                border-color: #00FF00;
-            }
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-            }
-            #status {
-                text-align: center;
-                font-size: 18px;
-                font-weight: bold;
-                margin: 10px 0;
-                padding: 10px;
-                border-radius: 8px;
-                background: #f0f0f0;
-            }
-            #controls {
-                text-align: center;
-                margin: 20px 0;
-            }
-            button {
-                background: #4A6741;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                font-size: 16px;
-                border-radius: 8px;
-                cursor: pointer;
-                margin: 5px;
-            }
-            button:hover {
-                background: #3A5232;
-            }
-            button:disabled {
-                background: #ccc;
-                cursor: not-allowed;
-            }
-            #countdown {
-                font-size: 48px;
-                font-weight: bold;
-                color: #FF0000;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="camera-container">
-            <video id="video" autoplay playsinline></video>
-            <div id="overlay" class="overlay"></div>
-            <canvas id="canvas"></canvas>
-        </div>
-        <div id="status">Click "Start Camera" to begin</div>
-        <div id="controls">
-            <button id="startBtn" onclick="startCamera()">Start Camera</button>
-            <button id="recordBtn" onclick="startRecording()" disabled>Start Recording (15s)</button>
-            <button id="stopBtn" onclick="stopCamera()" disabled>Stop Camera</button>
-        </div>
+# Declare component using the local static files
+# Use absolute path for reliability
+parent_dir = os.path.dirname(os.path.abspath(__file__))
+component_path = os.path.join(parent_dir, "browser_camera_component")
 
-        <script>
-            let stream = null;
-            let mediaRecorder = null;
-            let recordedChunks = [];
-            let recordingTimeout = null;
-            let countdownInterval = null;
-
-            async function startCamera() {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { 
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            facingMode: 'user'
-                        }, 
-                        audio: false 
-                    });
-                    
-                    const video = document.getElementById('video');
-                    video.srcObject = stream;
-                    
-                    document.getElementById('startBtn').disabled = true;
-                    document.getElementById('recordBtn').disabled = false;
-                    document.getElementById('stopBtn').disabled = false;
-                    document.getElementById('status').textContent = 'Camera ready! Position your face in the oval';
-                    document.getElementById('overlay').classList.add('aligned');
-                    
-                } catch (err) {
-                    document.getElementById('status').textContent = 'Error: ' + err.message;
-                    console.error('Camera error:', err);
-                }
-            }
-
-            function startRecording() {
-                recordedChunks = [];
-                
-                // Countdown
-                let count = 3;
-                document.getElementById('status').innerHTML = '<span id="countdown">' + count + '</span>';
-                document.getElementById('recordBtn').disabled = true;
-                
-                countdownInterval = setInterval(() => {
-                    count--;
-                    if (count > 0) {
-                        document.getElementById('countdown').textContent = count;
-                    } else {
-                        clearInterval(countdownInterval);
-                        actuallyStartRecording();
-                    }
-                }, 1000);
-            }
-
-            function actuallyStartRecording() {
-                try {
-                    const options = { mimeType: 'video/webm;codecs=vp8' };
-                    mediaRecorder = new MediaRecorder(stream, options);
-                    
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            recordedChunks.push(event.data);
-                        }
-                    };
-                    
-                    mediaRecorder.onstop = () => {
-                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64data = reader.result.split(',')[1];
-                            // Send to Streamlit
-                            window.parent.postMessage({
-                                type: 'streamlit:setComponentValue',
-                                value: base64data
-                            }, '*');
-                        };
-                        reader.readAsDataURL(blob);
-                        
-                        document.getElementById('status').textContent = 'Recording complete! Processing...';
-                        document.getElementById('overlay').classList.remove('recording');
-                    };
-                    
-                    mediaRecorder.start();
-                    document.getElementById('overlay').classList.add('recording');
-                    
-                    let remaining = 15;
-                    document.getElementById('status').textContent = 'Recording... ' + remaining + 's remaining';
-                    
-                    const updateTimer = setInterval(() => {
-                        remaining--;
-                        if (remaining > 0) {
-                            document.getElementById('status').textContent = 'Recording... ' + remaining + 's remaining';
-                        } else {
-                            clearInterval(updateTimer);
-                        }
-                    }, 1000);
-                    
-                    // Auto-stop after 15 seconds
-                    recordingTimeout = setTimeout(() => {
-                        if (mediaRecorder && mediaRecorder.state === 'recording') {
-                            mediaRecorder.stop();
-                        }
-                    }, 15000);
-                    
-                } catch (err) {
-                    document.getElementById('status').textContent = 'Recording error: ' + err.message;
-                    console.error('Recording error:', err);
-                }
-            }
-
-            function stopCamera() {
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop();
-                    clearTimeout(recordingTimeout);
-                }
-                
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    stream = null;
-                }
-                
-                document.getElementById('video').srcObject = null;
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('recordBtn').disabled = true;
-                document.getElementById('stopBtn').disabled = true;
-                document.getElementById('status').textContent = 'Camera stopped';
-                document.getElementById('overlay').classList.remove('aligned', 'recording');
-            }
-
-            // Cleanup on page unload
-            window.addEventListener('beforeunload', stopCamera);
-        </script>
-    </body>
-    </html>
-    """
-    return html_code
+# Declare the component
+_component_func = components.declare_component(
+    "live_camera_component",
+    path=component_path,
+)
 
 def live_camera_component(key="live_camera"):
     """
     Streamlit component for live camera recording.
     Returns base64-encoded video data when recording is complete.
     """
-    html = get_camera_html()
-    video_data = components.html(html, height=600, scrolling=False)
+    # Simply call the declared component function
+    # The return value will be the data sent from JavaScript via setComponentValue
+    video_data = _component_func(key=key, default=None)
     return video_data
 
 def save_recorded_video(base64_data: str) -> str:
