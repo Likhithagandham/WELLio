@@ -14,23 +14,24 @@ Security Features:
 - Secure cloud storage
 """
 
-import os
+import bcrypt
 import re
-import json
-import base64
-from typing import Tuple, Optional, Dict, Any, List
-from datetime import datetime, timedelta
+import os
 from pathlib import Path
 from dataclasses import dataclass
-import requests
-import jwt
-import bcrypt
-import streamlit as st
-from supabase import create_client, Client
+from datetime import datetime
+from typing import Optional, Tuple, List
 from dotenv import load_dotenv
+from supabase import create_client, Client
 
-# Ensure env vars are loaded module-level
-load_dotenv(override=True)
+# Load environment variables explicitly from the same directory
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+
+# Debug print to help verify loading
+if not os.environ.get("SUPABASE_URL"):
+    print(f"DEBUG: .env file found at {env_path}? {env_path.exists()}")
+    print("DEBUG: Failed to load SUPABASE_URL from .env")
 
 
 # ============================================================================
@@ -548,6 +549,7 @@ def exchange_code_for_session(auth_code: str, supabase_client: Optional[Client] 
     except Exception as e:
         print(f"Error exchanging code: {e}")
         return False, None, f"Authentication error: {str(e)}"
+
 
 
 # ============================================================================
