@@ -1596,6 +1596,7 @@ uploaded_file = None
 recorded_file_path = None
 
 in_memory_data = None
+start_analysis = False
 
 if recording_mode == "live":
     in_memory_data = live_camera_interface()
@@ -1614,850 +1615,850 @@ else:
         if in_memory_data:
             start_analysis = True
 
-    # Check if profile is completed
-    profile_completed = st.session_state.get("profile_completed", False)
+# Check if profile is completed
+profile_completed = st.session_state.get("profile_completed", False)
     
-    # Process if triggered
-    # Process if triggered
+# Process if triggered
+# Process if triggered
+
+# Check if we should restore from cache (if analysis was done previously and we are just interacting with UI)
+restore_from_cache = False
+if not start_analysis and "analysis_results" in st.session_state:
+    start_analysis = True
+    restore_from_cache = True
     
-    # Check if we should restore from cache (if analysis was done previously and we are just interacting with UI)
-    restore_from_cache = False
-    if not start_analysis and "analysis_results" in st.session_state:
-        start_analysis = True
-        restore_from_cache = True
-    
-    if start_analysis:
-        try:
-            if not restore_from_cache:
-                progress_bar = st.progress(0, t("loading_video"))
-                
-                def progress_callback(current, total):
-                    progress_bar.progress(min(1.0, current / total), f"{t('processing_frame')} {current}/{total}...")
-                
-                # Main pipeline
-                # Main pipeline
-                # progress_callback not supported in new backend
-                if in_memory_data:
-                    frames, fps = in_memory_data
-                    vitals, filtered_signal, risk = estimate_vitals_from_frames(frames, fps)
-                else:
-                    # Fallback for unexpected cases
-                    st.error("Missing in-memory data")
-                    st.stop()
-                
-                # Monkey-patch missing UI properties for compatibility
-                # Confidence
-                if vitals.heart_rate_valid:
-                    if filtered_signal.confidence_percent > 80:
-                        vitals.heart_rate_confidence = "HIGH"
-                    elif filtered_signal.confidence_percent > 60:
-                        vitals.heart_rate_confidence = "MEDIUM"
-                    else:
-                        vitals.heart_rate_confidence = "LOW"
-                else:
-                    vitals.heart_rate_confidence = "VERY LOW"
-                
-                # Notes
-                vitals.bp_note = "Experimental heuristic. NOT VALIDATED."
-                vitals.spo2_note = "Experimental estimate from green channel (uncalibrated)."
-                
-                # Cache the results
-                st.session_state["analysis_results"] = (vitals, filtered_signal, risk)
-                
-                progress_bar.progress(1.0, f"{t('complete')}!")
-                st.success(f"✅ {t('video_processed_success')}")
-                
+if start_analysis:
+    try:
+        if not restore_from_cache:
+            progress_bar = st.progress(0, t("loading_video"))
+            
+            def progress_callback(current, total):
+                progress_bar.progress(min(1.0, current / total), f"{t('processing_frame')} {current}/{total}...")
+            
+            # Main pipeline
+            # Main pipeline
+            # progress_callback not supported in new backend
+            if in_memory_data:
+                frames, fps = in_memory_data
+                vitals, filtered_signal, risk = estimate_vitals_from_frames(frames, fps)
             else:
-                # Restore results
-                vitals, filtered_signal, risk = st.session_state["analysis_results"]
+                # Fallback for unexpected cases
+                st.error("Missing in-memory data")
+                st.stop()
             
-            # Add button to start new analysis
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button(f"🔄 {t('start_new_analysis')}", type="primary", use_container_width=True):
-                    # Clear the viewing state and rerun
-                    st.session_state.pop("viewing_history", None)
-                    st.session_state.pop("selected_session_id", None)
-                    st.rerun()
-            
-            # ================================================================
-            # RESULTS DISPLAY
-            # ================================================================
-            
-            st.divider()
-            st.subheader(t("vital_signs"))
-            
-            # Show four key metrics: Pulse, Stress, BP, SpO2 (hide HRV)
-            col1, col2, col3, col4 = st.columns(4)
-            
-            # Estimated Pulse (rPPG)
-            with col1:
-                st.metric(
-                    t("estimated_pulse"),
-                    f"{vitals.heart_rate_bpm:.1f} BPM",
-                    help=f"{t('confidence')}: {vitals.heart_rate_confidence}. {t('typical_error')}: ±5–10 BPM"
-                )
-                # Add label below pulse based on BPM ranges
-                try:
-                    bpm_val = float(vitals.heart_rate_bpm)
-                except Exception:
-                    bpm_val = None
-
-                if bpm_val is None:
-                    pulse_label = t("na")
-                    color = "#6b7280"
+            # Monkey-patch missing UI properties for compatibility
+            # Confidence
+            if vitals.heart_rate_valid:
+                if filtered_signal.confidence_percent > 80:
+                    vitals.heart_rate_confidence = "HIGH"
+                elif filtered_signal.confidence_percent > 60:
+                    vitals.heart_rate_confidence = "MEDIUM"
                 else:
-                    if bpm_val < 50:
-                        pulse_label = "⬇️ Low"
-                        color = "#3b82f6" # Blue
-                    elif bpm_val <= 60:
-                        pulse_label = "⬇️ Low-Normal"
-                        color = "#60a5fa" # Light Blue
-                    elif bpm_val <= 80:
-                        pulse_label = "✅ Normal"
-                        color = "#16a34a" # Green
-                    elif bpm_val <= 100:
-                        pulse_label = "⬆️ High-Normal"
-                        color = "#f59e0b" # Orange
-                    else:
-                        pulse_label = "⬆️ High"
-                        color = "#dc2626" # Red
-
-                st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{pulse_label}</div>",
-                    unsafe_allow_html=True
-                )
-            
-            # Stress Index (0–10) — Experimental
-            with col2:
-                # STRESS
-                # Use backend computed details
-                stress_details = vitals.stress_details
-                if stress_details:
-                     s_label = stress_details.label
-                     s_score = stress_details.score
-                     s_reason = stress_details.reason
-                     
-                     # Color
-                     if s_score is not None:
-                         if s_score <= 2: s_color = "#16a34a" # Green
-                         elif s_score <= 5: s_color = "#f59e0b" # Orange
-                         else: s_color = "#dc2626" # Red
-                     else:
-                         s_color = "#6b7280"
-                else:
-                     s_label = "Unavailable"
-                     s_score = None
-                     s_reason = "Insufficient data"
-                     s_color = "#6b7280"
-
-                st.metric(t("stress_index"), 
-                          f"{s_label} ({s_score}/10)" if s_score is not None else s_label,
-                          help=s_reason)
-                
-                st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{s_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{s_label}</div>",
-                    unsafe_allow_html=True
-                )
-
-
-            
-            # (HRV hidden from top summary per user request)
-            
-            # Estimated Blood Pressure (Experimental — Not Clinical)
-            # Estimated Blood Pressure
-            with col3:
-                # Use backend details
-                bp_details = vitals.bp_details
-                
-                if bp_details:
-                    sbp = bp_details.systolic
-                    dbp = bp_details.diastolic
-                    sbp = bp_details.systolic
-                    dbp = bp_details.diastolic
-                    bp_reason = bp_details.reason
-                    bp_conf = bp_details.confidence
-                    
-                    # Always recalculate label to ensure consistency (overriding potentially stale session state)
-                    bp_label = get_bp_category(sbp, dbp)
-                    
-                    st.metric(
-                        t("estimated_bp"),
-                        f"{sbp}/{dbp} mmHg",
-                        help=f"{bp_reason} (Confidence: {bp_conf}%)"
-                    )
-                    
-                    # Color map
-                    bp_color = "#6b7280"
-                    if "High-Normal" in bp_label: bp_color = "#f59e0b"
-                    elif "High" in bp_label: bp_color = "#dc2626"
-                    elif "Normal" in bp_label: bp_color = "#16a34a"
-                    elif "Low" in bp_label: bp_color = "#3b82f6"
-                    
-                    st.markdown(
-                        f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{bp_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{bp_label}</div>",
-                        unsafe_allow_html=True
-                    )
-                    
-                    # Alert for low confidence
-                    if bp_conf < 55:
-                        st.caption("⚠️ Low signal confidence")
-                        
-                else:
-                    # Fallback (should typically have value if HR exists, but safe guard)
-                    st.metric(t("estimated_bp"), t("na"))
-
-                # Disclaimer Tooltip
-                st.caption(f"ℹ️ *{t('experimental_bp_disclaimer') if 'experimental_bp_disclaimer' in locals() else 'Experimental Estimate'}*")
-
-            # Estimated SpO2
-            with col4:
-                if vitals.spo2 is not None:
-                    st.metric(
-                        t("estimated_spo2_experimental"),
-                        f"{vitals.spo2:.1f}%",
-                        help=vitals.spo2_note
-                    )
-                else:
-                    st.metric(t("estimated_spo2_experimental"), t("na"))
-                # Label below SpO2 according to benchmarks:
-                # ≥95% → Normal
-                # 92–94% → Slightly Low
-                # 88–91% → Low
-                # <88% → Very Low
-                try:
-                    spo2_val = float(vitals.spo2) if vitals.spo2 is not None else None
-                except Exception:
-                    spo2_val = None
-
-                if spo2_val is None or np.isnan(spo2_val):
-                    spo2_label = t("na")
-                else:
-                    if spo2_val >= 95:
-                        spo2_label = t("spo2_normal")
-                    elif spo2_val >= 92:
-                        spo2_label = t("spo2_slightly_low")
-                    elif spo2_val >= 88:
-                        spo2_label = t("spo2_low")
-                    else:
-                        spo2_label = t("spo2_very_low")
-
-                spo2_color_map = {
-                    "Normal": "#16a34a",
-                    "Slightly Low": "#f59e0b",
-                    "Low": "#f97316",
-                    "Very Low": "#dc2626",
-                    "N/A": "#6b7280"
-                }
-                spo2_color = spo2_color_map.get(spo2_label, "#6b7280")
-                st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{spo2_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{spo2_label}</div>",
-                    unsafe_allow_html=True
-                )
-            
-            # ================================================================
-            # RISK ASSESSMENT
-            # ================================================================
-            st.divider()
-            st.subheader(f"⚠️  {t('risk_assessment_experimental')}")
-            
-            # (Vitals-only risk details hidden — combined profile+vitals score shown below)
-            
-            # --- Dynamic profile-based risk calculation with new benchmarks
-            def compute_profile_risk():
-                # Read profile values from session state (defaults should exist)
-                age = st.session_state.get("profile_age", 30)
-                gender = st.session_state.get("profile_gender", "Prefer not to say")
-                height = st.session_state.get("profile_height", 170)
-                weight = st.session_state.get("profile_weight", 70)
-                diet = st.session_state.get("profile_diet", "Non-Vegetarian")
-                exercise = st.session_state.get("profile_exercise", "3–4x/week")
-                sleep = st.session_state.get("profile_sleep", 7.0)
-                smoking = st.session_state.get("profile_smoking", "Never")
-                drinking = st.session_state.get("profile_drinking", "Never")
-
-                score = 0
-                risk_factors = []
-                protective_factors = []
-
-                # AGE: <30 → 0, 30–45 → +1, 46–60 → +2, >60 → +3
-                if age < 30:
-                    protective_factors.append(f"Age under 30")
-                elif age <= 45:
-                    score += 1
-                    risk_factors.append(f"Age {age}")
-                elif age <= 60:
-                    score += 2
-                    risk_factors.append(f"Age {age}")
-                else:
-                    score += 3
-                    risk_factors.append(f"Age {age}")
-
-                # BMI: 18.5–24.9 → 0, 25–29.9 → +1, <18.5 or ≥30 → +2
-                try:
-                    bmi = weight / ((height/100.0)**2)
-                except Exception:
-                    bmi = 22.0
-                
-                if 18.5 <= bmi <= 24.9:
-                    protective_factors.append(f"Healthy BMI {bmi:.1f}")
-                elif 25 <= bmi <= 29.9:
-                    score += 1
-                    risk_factors.append(f"Overweight BMI {bmi:.1f}")
-                else:
-                    score += 2
-                    if bmi < 18.5:
-                        risk_factors.append(f"Underweight BMI {bmi:.1f}")
-                    else:
-                        risk_factors.append(f"Obese BMI {bmi:.1f}")
-
-                # DIET: Vegetarian → 0, Non-vegetarian → +1
-                diet_str = str(diet).lower()
-                if "veg" in diet_str and "non" not in diet_str:
-                    protective_factors.append("Vegetarian diet")
-                else:
-                    score += 1
-                    risk_factors.append("Non-vegetarian diet")
-
-                # EXERCISE: 5x+/week → 0, 3–4x/week → +1, 1–2x/week → +2, Never → +3
-                ex = str(exercise).lower()
-                if "daily" in ex or "5" in ex:
-                    protective_factors.append(f"Regular exercise: {exercise}")
-                elif "3" in ex or "4" in ex:
-                    score += 1
-                    risk_factors.append(f"Moderate exercise: {exercise}")
-                elif "1" in ex or "2" in ex:
-                    score += 2
-                    risk_factors.append(f"Low exercise: {exercise}")
-                elif "never" in ex:
-                    score += 3
-                    risk_factors.append(f"No exercise")
-                else:
-                    score += 1
-                    risk_factors.append(f"Exercise: {exercise}")
-
-                # SLEEP: 7–8 hours → 0, 6–7 hours → +1, <6 hours → +2, >9 hours → +1
-                if 7 <= sleep <= 8:
-                    protective_factors.append(f"Adequate sleep: {sleep}h")
-                elif 6 <= sleep < 7:
-                    score += 1
-                    risk_factors.append(f"Slightly low sleep: {sleep}h")
-                elif sleep < 6:
-                    score += 2
-                    risk_factors.append(f"Insufficient sleep: {sleep}h")
-                elif sleep > 9:
-                    score += 1
-                    risk_factors.append(f"Excessive sleep: {sleep}h")
-
-                # SMOKING: Never → 0, Former → +1, Occasional → +2, Regular → +4
-                sm = str(smoking).lower()
-                if "never" in sm:
-                    protective_factors.append("No smoking history")
-                elif "former" in sm:
-                    score += 1
-                    risk_factors.append("Former smoker")
-                elif "occasional" in sm or "occ" in sm:
-                    score += 2
-                    risk_factors.append("Occasional smoking")
-                elif "regular" in sm:
-                    score += 4
-                    risk_factors.append("Regular smoking")
-
-                # DRINKING: Never → 0, Occasional → +2, Regular → +3, Former → +1
-                # Note: The user's spec mentions "Rare (≤1x/month)" but the dropdown has "Occasional"
-                # Mapping: Never → 0, Former → +1, Occasional → +2, Regular → +3
-                dr = str(drinking).lower()
-                if "never" in dr:
-                    protective_factors.append("No alcohol consumption")
-                elif "former" in dr:
-                    score += 1
-                    risk_factors.append("Former drinker")
-                elif "occasional" in dr or "occ" in dr:
-                    score += 2
-                    risk_factors.append("Occasional drinking")
-                elif "regular" in dr:
-                    score += 3
-                    risk_factors.append("Regular drinking")
-
-                # Clamp score between 0 and 10
-                score = int(max(0, min(10, score)))
-
-                # Map to level: 0–3 → Low, 4–6 → Moderate, 7–10 → High
-                if score <= 3:
-                    level = "Low"
-                elif score <= 6:
-                    level = "Moderate"
-                else:
-                    level = "High"
-
-                return {
-                    "score": score, 
-                    "level": level, 
-                    "risk_factors": risk_factors,
-                    "protective_factors": protective_factors
-                }
-
-            profile_risk = compute_profile_risk()
-
-            # Use only profile-based risk (no vitals weighting)
-            risk_score = profile_risk["score"]
-            risk_level = profile_risk["level"]
-
-            # Display risk score with color-coded indicator
-            if risk_score <= 3:
-                display_label = "Low Risk"
-                color = "#16a34a"
-            elif risk_score <= 6:
-                display_label = "Moderate Risk"
-                color = "#f59e0b"
+                    vitals.heart_rate_confidence = "LOW"
             else:
-                display_label = "High Risk"
-                color = "#dc2626"
+                vitals.heart_rate_confidence = "VERY LOW"
+            
+            # Notes
+            vitals.bp_note = "Experimental heuristic. NOT VALIDATED."
+            vitals.spo2_note = "Experimental estimate from green channel (uncalibrated)."
+            
+            # Cache the results
+            st.session_state["analysis_results"] = (vitals, filtered_signal, risk)
+            
+            progress_bar.progress(1.0, f"{t('complete')}!")
+            st.success(f"✅ {t('video_processed_success')}")
+            
+        else:
+            # Restore results
+            vitals, filtered_signal, risk = st.session_state["analysis_results"]
+        
+        # Add button to start new analysis
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button(f"🔄 {t('start_new_analysis')}", type="primary", use_container_width=True):
+                # Clear the viewing state and rerun
+                st.session_state.pop("viewing_history", None)
+                st.session_state.pop("selected_session_id", None)
+                st.rerun()
+    
+    # ================================================================
+    # RESULTS DISPLAY
+        # ================================================================
+        
+        st.divider()
+        st.subheader(t("vital_signs"))
+        
+        # Show four key metrics: Pulse, Stress, BP, SpO2 (hide HRV)
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Estimated Pulse (rPPG)
+        with col1:
+            st.metric(
+                t("estimated_pulse"),
+                f"{vitals.heart_rate_bpm:.1f} BPM",
+                help=f"{t('confidence')}: {vitals.heart_rate_confidence}. {t('typical_error')}: ±5–10 BPM"
+            )
+            # Add label below pulse based on BPM ranges
+            try:
+                bpm_val = float(vitals.heart_rate_bpm)
+            except Exception:
+                bpm_val = None
 
-            # Display risk score
+            if bpm_val is None:
+                pulse_label = t("na")
+                color = "#6b7280"
+            else:
+                if bpm_val < 50:
+                    pulse_label = "⬇️ Low"
+                    color = "#3b82f6" # Blue
+                elif bpm_val <= 60:
+                    pulse_label = "⬇️ Low-Normal"
+                    color = "#60a5fa" # Light Blue
+                elif bpm_val <= 80:
+                    pulse_label = "✅ Normal"
+                    color = "#16a34a" # Green
+                elif bpm_val <= 100:
+                    pulse_label = "⬆️ High-Normal"
+                    color = "#f59e0b" # Orange
+                else:
+                    pulse_label = "⬆️ High"
+                    color = "#dc2626" # Red
+
             st.markdown(
-                f"<div style='display:flex;align-items:center;gap:16px;margin-bottom:20px'>"
-                f"<div style='font-weight:600;font-size:16px'>Risk Score:</div>"
-                f"<div style='font-size:24px;font-weight:700'>{risk_score}/10</div>"
-                f"<div style='padding:8px 16px;border-radius:12px;background:{color};color:white;font-weight:700;font-size:16px'>{display_label}</div>"
-                f"</div>", unsafe_allow_html=True
+                f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{pulse_label}</div>",
+                unsafe_allow_html=True
+            )
+        
+        # Stress Index (0–10) — Experimental
+        with col2:
+            # STRESS
+            # Use backend computed details
+            stress_details = vitals.stress_details
+            if stress_details:
+                 s_label = stress_details.label
+                 s_score = stress_details.score
+                 s_reason = stress_details.reason
+                 
+                 # Color
+                 if s_score is not None:
+                     if s_score <= 2: s_color = "#16a34a" # Green
+                     elif s_score <= 5: s_color = "#f59e0b" # Orange
+                     else: s_color = "#dc2626" # Red
+                 else:
+                     s_color = "#6b7280"
+            else:
+                 s_label = "Unavailable"
+                 s_score = None
+                 s_reason = "Insufficient data"
+                 s_color = "#6b7280"
+
+            st.metric(t("stress_index"), 
+                      f"{s_label} ({s_score}/10)" if s_score is not None else s_label,
+                      help=s_reason)
+            
+            st.markdown(
+                f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{s_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{s_label}</div>",
+                unsafe_allow_html=True
             )
 
-            # Summary explanation
-            if risk_score <= 3:
-                summary = t("risk_summary_low")
-            elif risk_score <= 6:
-                summary = t("risk_summary_moderate")
-            else:
-                summary = t("risk_summary_high")
-            
-            st.info(f"**{t('summary')}:** {summary}")
-            
-            st.divider()
-            
-            # ================================================================
-            # HEALTH INSIGHTS (AI-POWERED)
-            # ================================================================
-            st.subheader(f"💡 {t('health_insights_title')}")
-            
-            # Display health insights if Gemini integration is available
-            if HAVE_GEMINI:
-                with st.spinner(f"{t('generating_insights')}..."):
-                    try:
-                        # Collect profile data
-                        age = st.session_state.get("profile_age", 30)
-                        gender = st.session_state.get("profile_gender", "Prefer not to say")
-                        height = st.session_state.get("profile_height", 170)
-                        weight = st.session_state.get("profile_weight", 70)
-                        diet = st.session_state.get("profile_diet", "Non-Vegetarian")
-                        exercise = st.session_state.get("profile_exercise", "3–4x/week")
-                        sleep = st.session_state.get("profile_sleep", 7.0)
-                        smoking = st.session_state.get("profile_smoking", "Never")
-                        
-                        # Call Groq API (API key is hardcoded in health_insights.py)
-                        insights = get_health_insights(
-                            pulse_bpm=vitals.heart_rate_bpm,
-                            stress_index=vitals.stress_level if not np.isnan(vitals.stress_level) else 5.0,
-                            estimated_sbp=vitals.bp_systolic if vitals.bp_systolic is not None else 120.0,
-                            estimated_dbp=vitals.bp_diastolic if vitals.bp_diastolic is not None else 80.0,
-                            estimated_spo2=vitals.spo2 if vitals.spo2 is not None else 98.0,
-                            age=age,
-                            gender=gender,
-                            height=height,
-                            weight=weight,
-                            diet=diet,
-                            exercise_frequency=exercise,
-                            sleep_hours=sleep,
-                            smoking_habits=smoking,
-                            lang=get_current_language()  # Pass current language
-                        )
-                        
-                        if insights.error:
-                            st.warning(f"⚠️ {insights.error}")
-                        else:
-                            # Display Health Insights in collapsible sections
-                            col_1, col_2 = st.columns([1, 1])
-                            
-                            with col_1:
-                                with st.expander(f"💪 {t('recommendations_title')}", expanded=True):
-                                    if insights.recommendations:
-                                        for rec in insights.recommendations:
-                                            st.write(f"• {rec}")
-                                    else:
-                                        st.info(t("maintain_healthy_habits"))
-                            with col_2:
-                                with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True):
-                                    if insights.symptoms_to_watch:
-                                        for symptom in insights.symptoms_to_watch:
-                                            st.write(f"• {symptom}")
-                                    else:
-                                        st.info(t("no_symptoms_watch"))
-                            
-                            # Disclaimer
-                          
-                    
-                    except Exception as e:
-                        st.error(f"{t('error_generating_insights')}: {str(e)}")
-            else:
-                st.info(t("insights_module_unavailable"))
-            
-            # Detailed Experimental Vitals removed; top-row shows compact metrics
-            
-            # ================================================================
-            # AUDIO SUMMARY (TTS)
-            # ================================================================
-            st.divider()
-            st.subheader(f"🔊 {t('audio_summary_title') if 'audio_summary_title' in locals() else 'Audio Summary'}")
-            
-            # Layout: Button on left, Player on right
-            audio_col1, audio_col2 = st.columns([1, 2])
-            
-            with audio_col1:
-                # Check for language change to trigger auto-regeneration
-                current_lang = get_current_language()
-                stored_lang = st.session_state.get("audio_generated_lang")
-                auto_regenerate = False
-                
-                # If audio exists but language doesn't match, regenerate
-                if stored_lang and stored_lang != current_lang and "audio_summary_bytes" in st.session_state:
-                    auto_regenerate = True
-                
-                if st.button(t("generate_audio_summary") if 'generate_audio_summary' in locals() else "Generate Audio Summary", use_container_width=True) or auto_regenerate:
-                    with st.spinner(t("generating_audio") if 'generating_audio' in locals() else "Generating audio..."):
-                        try:
-                            # Construct text using translations
-                            summary_text = t("audio_intro") + " "
-                            summary_text += t("audio_hr").format(value=f"{vitals.heart_rate_bpm:.0f}") + " "
-                            
-                            # Check if stress is valid
-                            if not np.isnan(vitals.stress_level):
-                                summary_text += t("audio_stress").format(value=f"{vitals.stress_level:.1f}") + " "
-                            
-                            if vitals.bp_systolic is not None and vitals.bp_diastolic is not None:
-                                summary_text += t("audio_bp").format(systolic=f"{vitals.bp_systolic:.0f}", diastolic=f"{vitals.bp_diastolic:.0f}") + " "
-                            
-                            if vitals.spo2 is not None:
-                                summary_text += t("audio_spo2").format(value=f"{vitals.spo2:.1f}") + " "
-                            
-                            # Risk Assessment
-                            # Map risk_level to translated string
-                            level_key = f"{risk_level.lower()}_risk"
-                            translated_level = t(level_key)
-                            summary_text += t("audio_risk").format(score=risk_score, level=translated_level) + " "
-                            
-                            if HAVE_GEMINI and 'insights' in locals() and not insights.error:
-                                summary_text += t("audio_insights_intro") + " "
-                                if insights.recommendations:
-                                    # Clean up markdown bullets if present
-                                    clean_recs = [r.replace("*", "").strip() for r in insights.recommendations]
-                                    summary_text += t("audio_recs") + ". ".join(clean_recs[:3]) + ". "
-                                if insights.symptoms_to_watch:
-                                    clean_sym = [s.replace("*", "").strip() for s in insights.symptoms_to_watch]
-                                    summary_text += t("audio_symptoms") + ". ".join(clean_sym[:3]) + ". "
-                            
-                            # Generate Audio
-                            from gtts import gTTS
-                            
-                            tts = gTTS(text=summary_text, lang=current_lang)
-                            mp3_fp = BytesIO()
-                            tts.write_to_fp(mp3_fp)
-                            mp3_fp.seek(0)
-                            
-                            # Store bytes and language in session state
-                            st.session_state["audio_summary_bytes"] = mp3_fp.getvalue()
-                            st.session_state["audio_generated_lang"] = current_lang
-                            
-                            # If we auto-regenerated, rerun to update the player immediately
-                            if auto_regenerate:
-                                st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Error generating audio: {e}")
-            
-            with audio_col2:
-                # Display audio if available in session state
-                if "audio_summary_bytes" in st.session_state and st.session_state["audio_summary_bytes"] is not None:
-                    # Create a fresh BytesIO object from stored bytes for playback
-                    audio_data = st.session_state["audio_summary_bytes"]
-                    st.audio(audio_data, format='audio/mp3')
-                    
-                    st.download_button(
-                        label="💾 " + (t("download_audio") if 'download_audio' in locals() else "Download Audio"),
-                        data=audio_data,
-                        file_name=f"Health_Summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
-                        mime="audio/mp3",
-                        use_container_width=True
-                    )
-            
-            st.divider()
-            
-            # ================================================================
-            # SIGNAL VISUALIZATIONS (Removed per user request)
-            # ================================================================
-            
-            # st.subheader("📈 Signal Processing & Analysis")
-            
-            # Main plots
-            # fig, axs = plt.subplots(2, 1, figsize=(12, 8))
-            
-            # Filtered signal
-            # axs[0].plot(filtered_signal.fused_signal, linewidth=1.5, color='green', alpha=0.8)
-            # axs[0].fill_between(range(len(filtered_signal.fused_signal)), 
-            #                    filtered_signal.fused_signal, alpha=0.2, color='green')
-            # axs[0].set_title("Filtered PPG Signal (Green Channel)", fontsize=12, fontweight='bold')
-            # axs[0].set_xlabel("Frame")
-            # axs[0].set_ylabel("Normalized Intensity")
-            # axs[0].grid(True, alpha=0.3)
-            
-            # Power spectrum
-            # psd_freqs is correct in new backend
-            # valid_band = ((filtered_signal.psd_freqs >= 0.75) & 
-            #              (filtered_signal.psd_freqs <= 3.0))
-            # axs[1].semilogy(filtered_signal.psd_freqs, filtered_signal.psd, 
-            #                linewidth=1.5, color='blue', label='PSD')
-            
-            # if vitals.heart_rate_bpm:
-            #     peak_freq = vitals.heart_rate_bpm / 60.0
-            #     axs[1].axvline(peak_freq, color='red', linestyle='--', linewidth=2, 
-            #                    label=f'Peak ≈ {vitals.heart_rate_bpm:.1f} BPM')
-            
-            # axs[1].set_title("Power Spectral Density (Welch)", fontsize=12, fontweight='bold')
-            # axs[1].set_xlabel("Frequency (Hz)")
-            # axs[1].set_ylabel("Power (log scale)")
-            # axs[1].legend()
-            # axs[1].grid(True, alpha=0.3, which='both')
-            # axs[1].set_xlim([0, 4])
-            
-            # st.pyplot(fig)
-            
-            # RR histogram
-            # if vitals.rr_intervals.size > 0:
-            #     st.subheader("💓 Heart Rate Variability (RR Intervals)")
-            #     
-            #     fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-            #     
-            #     # Histogram
-            #     ax1.hist(vitals.rr_intervals, bins=max(5, len(vitals.rr_intervals)//3), 
-            #             color='steelblue', edgecolor='black', alpha=0.7)
-            #     ax1.set_title("RR Interval Distribution", fontweight='bold')
-            #     ax1.set_xlabel("RR Interval (ms)")
-            #     ax1.set_ylabel("Frequency")
-            #     ax1.grid(True, alpha=0.3)
-            #     
-            #     # Time series
-            #     ax2.plot(vitals.rr_intervals, marker='o', linestyle='-', 
-            #             color='darkgreen', markersize=4, linewidth=1)
-            #     ax2.set_title("RR Intervals Over Time", fontweight='bold')
-            #     ax2.set_xlabel("Beat #")
-            #     ax2.set_ylabel("RR Interval (ms)")
-            #     ax2.grid(True, alpha=0.3)
-            #     
-            #     st.pyplot(fig2)
-            #     
-            #     # Calculate pNN50
-            #     pnn50 = 0.0
-            #     if vitals.rr_intervals.size > 1:
-            #         rr_diff = np.abs(np.diff(vitals.rr_intervals))
-            #         pnn50 = 100.0 * np.sum(rr_diff > 0.05) / len(rr_diff)
-            #
-            #     st.info(f"""
-            #     **HRV Summary:**
-            #     - **# of beats detected:** {len(vitals.rr_intervals) + 1}
-            #     - **SDNN (std dev):** {vitals.sdnn:.1f} ms
-            #     - **Mean RR:** {np.mean(vitals.rr_intervals)*1000:.0f} ms
-            #     - **pNN50:** {pnn50:.1f}%
-            #     """)
-            # else:
-            #     st.warning("⚠️  Not enough beats detected for HRV analysis. Try a longer or clearer video.")
-            
-            # Advanced plots
 
+        
+        # (HRV hidden from top summary per user request)
+        
+        # Estimated Blood Pressure (Experimental — Not Clinical)
+        # Estimated Blood Pressure
+        with col3:
+            # Use backend details
+            bp_details = vitals.bp_details
             
-            # ================================================================
-            # SESSION CAPTURE & PDF DOWNLOAD
-            # ================================================================
-            
-            if HAVE_HISTORY:
-                st.divider()
-                st.subheader("📄 Save & Download")
+            if bp_details:
+                sbp = bp_details.systolic
+                dbp = bp_details.diastolic
+                sbp = bp_details.systolic
+                dbp = bp_details.diastolic
+                bp_reason = bp_details.reason
+                bp_conf = bp_details.confidence
                 
-                # Capture session data
+                # Always recalculate label to ensure consistency (overriding potentially stale session state)
+                bp_label = get_bp_category(sbp, dbp)
+                
+                st.metric(
+                    t("estimated_bp"),
+                    f"{sbp}/{dbp} mmHg",
+                    help=f"{bp_reason} (Confidence: {bp_conf}%)"
+                )
+                
+                # Color map
+                bp_color = "#6b7280"
+                if "High-Normal" in bp_label: bp_color = "#f59e0b"
+                elif "High" in bp_label: bp_color = "#dc2626"
+                elif "Normal" in bp_label: bp_color = "#16a34a"
+                elif "Low" in bp_label: bp_color = "#3b82f6"
+                
+                st.markdown(
+                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{bp_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{bp_label}</div>",
+                    unsafe_allow_html=True
+                )
+                
+                # Alert for low confidence
+                if bp_conf < 55:
+                    st.caption("⚠️ Low signal confidence")
+                    
+            else:
+                # Fallback (should typically have value if HR exists, but safe guard)
+                st.metric(t("estimated_bp"), t("na"))
+
+            # Disclaimer Tooltip
+            st.caption(f"ℹ️ *{t('experimental_bp_disclaimer') if 'experimental_bp_disclaimer' in locals() else 'Experimental Estimate'}*")
+
+        # Estimated SpO2
+        with col4:
+            if vitals.spo2 is not None:
+                st.metric(
+                    t("estimated_spo2_experimental"),
+                    f"{vitals.spo2:.1f}%",
+                    help=vitals.spo2_note
+                )
+            else:
+                st.metric(t("estimated_spo2_experimental"), t("na"))
+            # Label below SpO2 according to benchmarks:
+            # ≥95% → Normal
+            # 92–94% → Slightly Low
+            # 88–91% → Low
+            # <88% → Very Low
+            try:
+                spo2_val = float(vitals.spo2) if vitals.spo2 is not None else None
+            except Exception:
+                spo2_val = None
+
+            if spo2_val is None or np.isnan(spo2_val):
+                spo2_label = t("na")
+            else:
+                if spo2_val >= 95:
+                    spo2_label = t("spo2_normal")
+                elif spo2_val >= 92:
+                    spo2_label = t("spo2_slightly_low")
+                elif spo2_val >= 88:
+                    spo2_label = t("spo2_low")
+                else:
+                    spo2_label = t("spo2_very_low")
+
+            spo2_color_map = {
+                "Normal": "#16a34a",
+                "Slightly Low": "#f59e0b",
+                "Low": "#f97316",
+                "Very Low": "#dc2626",
+                "N/A": "#6b7280"
+            }
+            spo2_color = spo2_color_map.get(spo2_label, "#6b7280")
+            st.markdown(
+                f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{spo2_color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{spo2_label}</div>",
+                unsafe_allow_html=True
+            )
+        
+        # ================================================================
+        # RISK ASSESSMENT
+        # ================================================================
+        st.divider()
+        st.subheader(f"⚠️  {t('risk_assessment_experimental')}")
+        
+        # (Vitals-only risk details hidden — combined profile+vitals score shown below)
+        
+        # --- Dynamic profile-based risk calculation with new benchmarks
+        def compute_profile_risk():
+            # Read profile values from session state (defaults should exist)
+            age = st.session_state.get("profile_age", 30)
+            gender = st.session_state.get("profile_gender", "Prefer not to say")
+            height = st.session_state.get("profile_height", 170)
+            weight = st.session_state.get("profile_weight", 70)
+            diet = st.session_state.get("profile_diet", "Non-Vegetarian")
+            exercise = st.session_state.get("profile_exercise", "3–4x/week")
+            sleep = st.session_state.get("profile_sleep", 7.0)
+            smoking = st.session_state.get("profile_smoking", "Never")
+            drinking = st.session_state.get("profile_drinking", "Never")
+
+            score = 0
+            risk_factors = []
+            protective_factors = []
+
+            # AGE: <30 → 0, 30–45 → +1, 46–60 → +2, >60 → +3
+            if age < 30:
+                protective_factors.append(f"Age under 30")
+            elif age <= 45:
+                score += 1
+                risk_factors.append(f"Age {age}")
+            elif age <= 60:
+                score += 2
+                risk_factors.append(f"Age {age}")
+            else:
+                score += 3
+                risk_factors.append(f"Age {age}")
+
+            # BMI: 18.5–24.9 → 0, 25–29.9 → +1, <18.5 or ≥30 → +2
+            try:
+                bmi = weight / ((height/100.0)**2)
+            except Exception:
+                bmi = 22.0
+            
+            if 18.5 <= bmi <= 24.9:
+                protective_factors.append(f"Healthy BMI {bmi:.1f}")
+            elif 25 <= bmi <= 29.9:
+                score += 1
+                risk_factors.append(f"Overweight BMI {bmi:.1f}")
+            else:
+                score += 2
+                if bmi < 18.5:
+                    risk_factors.append(f"Underweight BMI {bmi:.1f}")
+                else:
+                    risk_factors.append(f"Obese BMI {bmi:.1f}")
+
+            # DIET: Vegetarian → 0, Non-vegetarian → +1
+            diet_str = str(diet).lower()
+            if "veg" in diet_str and "non" not in diet_str:
+                protective_factors.append("Vegetarian diet")
+            else:
+                score += 1
+                risk_factors.append("Non-vegetarian diet")
+
+            # EXERCISE: 5x+/week → 0, 3–4x/week → +1, 1–2x/week → +2, Never → +3
+            ex = str(exercise).lower()
+            if "daily" in ex or "5" in ex:
+                protective_factors.append(f"Regular exercise: {exercise}")
+            elif "3" in ex or "4" in ex:
+                score += 1
+                risk_factors.append(f"Moderate exercise: {exercise}")
+            elif "1" in ex or "2" in ex:
+                score += 2
+                risk_factors.append(f"Low exercise: {exercise}")
+            elif "never" in ex:
+                score += 3
+                risk_factors.append(f"No exercise")
+            else:
+                score += 1
+                risk_factors.append(f"Exercise: {exercise}")
+
+            # SLEEP: 7–8 hours → 0, 6–7 hours → +1, <6 hours → +2, >9 hours → +1
+            if 7 <= sleep <= 8:
+                protective_factors.append(f"Adequate sleep: {sleep}h")
+            elif 6 <= sleep < 7:
+                score += 1
+                risk_factors.append(f"Slightly low sleep: {sleep}h")
+            elif sleep < 6:
+                score += 2
+                risk_factors.append(f"Insufficient sleep: {sleep}h")
+            elif sleep > 9:
+                score += 1
+                risk_factors.append(f"Excessive sleep: {sleep}h")
+
+            # SMOKING: Never → 0, Former → +1, Occasional → +2, Regular → +4
+            sm = str(smoking).lower()
+            if "never" in sm:
+                protective_factors.append("No smoking history")
+            elif "former" in sm:
+                score += 1
+                risk_factors.append("Former smoker")
+            elif "occasional" in sm or "occ" in sm:
+                score += 2
+                risk_factors.append("Occasional smoking")
+            elif "regular" in sm:
+                score += 4
+                risk_factors.append("Regular smoking")
+
+            # DRINKING: Never → 0, Occasional → +2, Regular → +3, Former → +1
+            # Note: The user's spec mentions "Rare (≤1x/month)" but the dropdown has "Occasional"
+            # Mapping: Never → 0, Former → +1, Occasional → +2, Regular → +3
+            dr = str(drinking).lower()
+            if "never" in dr:
+                protective_factors.append("No alcohol consumption")
+            elif "former" in dr:
+                score += 1
+                risk_factors.append("Former drinker")
+            elif "occasional" in dr or "occ" in dr:
+                score += 2
+                risk_factors.append("Occasional drinking")
+            elif "regular" in dr:
+                score += 3
+                risk_factors.append("Regular drinking")
+
+            # Clamp score between 0 and 10
+            score = int(max(0, min(10, score)))
+
+            # Map to level: 0–3 → Low, 4–6 → Moderate, 7–10 → High
+            if score <= 3:
+                level = "Low"
+            elif score <= 6:
+                level = "Moderate"
+            else:
+                level = "High"
+
+            return {
+                "score": score, 
+                "level": level, 
+                "risk_factors": risk_factors,
+                "protective_factors": protective_factors
+            }
+
+        profile_risk = compute_profile_risk()
+
+        # Use only profile-based risk (no vitals weighting)
+        risk_score = profile_risk["score"]
+        risk_level = profile_risk["level"]
+
+        # Display risk score with color-coded indicator
+        if risk_score <= 3:
+            display_label = "Low Risk"
+            color = "#16a34a"
+        elif risk_score <= 6:
+            display_label = "Moderate Risk"
+            color = "#f59e0b"
+        else:
+            display_label = "High Risk"
+            color = "#dc2626"
+
+        # Display risk score
+        st.markdown(
+            f"<div style='display:flex;align-items:center;gap:16px;margin-bottom:20px'>"
+            f"<div style='font-weight:600;font-size:16px'>Risk Score:</div>"
+            f"<div style='font-size:24px;font-weight:700'>{risk_score}/10</div>"
+            f"<div style='padding:8px 16px;border-radius:12px;background:{color};color:white;font-weight:700;font-size:16px'>{display_label}</div>"
+            f"</div>", unsafe_allow_html=True
+        )
+
+        # Summary explanation
+        if risk_score <= 3:
+            summary = t("risk_summary_low")
+        elif risk_score <= 6:
+            summary = t("risk_summary_moderate")
+        else:
+            summary = t("risk_summary_high")
+        
+        st.info(f"**{t('summary')}:** {summary}")
+        
+        st.divider()
+        
+        # ================================================================
+        # HEALTH INSIGHTS (AI-POWERED)
+        # ================================================================
+        st.subheader(f"💡 {t('health_insights_title')}")
+        
+        # Display health insights if Gemini integration is available
+        if HAVE_GEMINI:
+            with st.spinner(f"{t('generating_insights')}..."):
                 try:
-                    # Calculate BMI
-                    height_m = st.session_state.get("profile_height", 170) / 100.0
-                    weight_kg = st.session_state.get("profile_weight", 70)
-                    bmi = weight_kg / (height_m ** 2)
+                    # Collect profile data
+                    age = st.session_state.get("profile_age", 30)
+                    gender = st.session_state.get("profile_gender", "Prefer not to say")
+                    height = st.session_state.get("profile_height", 170)
+                    weight = st.session_state.get("profile_weight", 70)
+                    diet = st.session_state.get("profile_diet", "Non-Vegetarian")
+                    exercise = st.session_state.get("profile_exercise", "3–4x/week")
+                    sleep = st.session_state.get("profile_sleep", 7.0)
+                    smoking = st.session_state.get("profile_smoking", "Never")
                     
-                    # Get AI insights if available
-                    if HAVE_GEMINI and 'insights' in locals():
-                        detailed_analysis = insights.detailed_analysis if not insights.error else ""
-                        recommendations = insights.recommendations if not insights.error else []
-                        symptoms_to_watch = insights.symptoms_to_watch if not insights.error else []
-                    else:
-                        detailed_analysis = ""
-                        recommendations = []
-                        symptoms_to_watch = []
-                    
-                    # Create session data
-                    session_data = SessionData(
-                        session_id=str(uuid.uuid4()),
-                        timestamp=datetime.now().isoformat(),
-                        analysis_type="Health Scan",
-                        
-                        # Profile
-                        age=st.session_state.get("profile_age", 30),
-                        gender=st.session_state.get("profile_gender", "Prefer not to say"),
-                        height=st.session_state.get("profile_height", 170),
-                        weight=st.session_state.get("profile_weight", 70),
-                        bmi=bmi,
-                        diet=st.session_state.get("profile_diet", "Non-Vegetarian"),
-                        exercise=st.session_state.get("profile_exercise", "3–4x/week"),
-                        sleep=st.session_state.get("profile_sleep", 7.0),
-                        smoking=st.session_state.get("profile_smoking", "Never"),
-                        drinking=st.session_state.get("profile_drinking", "Never"),
-                        
-                        # Vitals
-                        heart_rate=float(vitals.heart_rate_bpm),
-                        heart_rate_confidence=vitals.heart_rate_confidence,
-                        stress_level=float(vitals.stress_level) if not np.isnan(vitals.stress_level) else 5.0,
-                        stress_label=vitals.stress_details.label if vitals.stress_details else "Unavailable",
-                        stress_score=vitals.stress_details.score if vitals.stress_details else None,
-                        stress_reason=vitals.stress_details.reason if vitals.stress_details else "",
-                        bp_systolic=float(vitals.bp_systolic) if vitals.bp_systolic is not None else None,
-                        bp_diastolic=float(vitals.bp_diastolic) if vitals.bp_diastolic is not None else None,
-                        bp_label=vitals.bp_details.label if vitals.bp_details else "Unavailable",
-                        bp_reason=vitals.bp_details.reason if vitals.bp_details else "",
-                        bp_confidence=vitals.bp_details.confidence if vitals.bp_details else 0,
-                        bp_disclaimer=vitals.bp_details.disclaimer if vitals.bp_details else "",
-                        spo2=float(vitals.spo2) if vitals.spo2 is not None else None,
-                        hrv_sdnn=float(vitals.sdnn),
-                        hrv_pnn50=float(100.0 * np.sum(np.abs(np.diff(vitals.rr_intervals)) > 0.05) / len(np.diff(vitals.rr_intervals))) if vitals.rr_intervals.size > 1 else 0.0,
-                        rr_intervals_count=len(vitals.rr_intervals) + 1 if vitals.rr_intervals.size > 0 else 0,
-                        
-                        # Risk
-                        risk_score=risk_score,
-                        risk_level=risk_level,
-                        risk_factors=profile_risk["risk_factors"],
-                        protective_factors=profile_risk["protective_factors"],
-                        
-                        # AI Insights
-                        detailed_analysis=detailed_analysis,
-                        recommendations=recommendations,
-                        symptoms_to_watch=symptoms_to_watch,
-                        
-                        # Visualizations (Removed per user request)
-                        signal_plot=None, # fig_to_base64(fig),
-                        hrv_plot=None # fig_to_base64(fig2) if vitals.rr_intervals.size > 0 else None
+                    # Call Groq API (API key is hardcoded in health_insights.py)
+                    insights = get_health_insights(
+                        pulse_bpm=vitals.heart_rate_bpm,
+                        stress_index=vitals.stress_level if not np.isnan(vitals.stress_level) else 5.0,
+                        estimated_sbp=vitals.bp_systolic if vitals.bp_systolic is not None else 120.0,
+                        estimated_dbp=vitals.bp_diastolic if vitals.bp_diastolic is not None else 80.0,
+                        estimated_spo2=vitals.spo2 if vitals.spo2 is not None else 98.0,
+                        age=age,
+                        gender=gender,
+                        height=height,
+                        weight=weight,
+                        diet=diet,
+                        exercise_frequency=exercise,
+                        sleep_hours=sleep,
+                        smoking_habits=smoking,
+                        lang=get_current_language()  # Pass current language
                     )
                     
-                    # Save session
-                    username = get_current_user_email() or "default_user"
-                    if save_session(username, session_data):
-                        st.success(f"✅ Session saved to history!")
-                        st.session_state["current_session"] = session_data
+                    if insights.error:
+                        st.warning(f"⚠️ {insights.error}")
                     else:
-                        st.warning("⚠️ Could not save session to history")
-                    
-                    # PDF Download button
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        if st.button("📄 Generate PDF Report", type="secondary"):
-                            st.session_state["generate_pdf"] = True
-                            st.rerun()
-                    
-                    # Show download button if PDF generation was requested
-                    if st.session_state.get("generate_pdf", False):
-                        with col2:
-                            with st.spinner("Generating PDF..."):
-                                try:
-                                    pdf_bytes = generate_health_report(session_data)
-                                    st.download_button(
-                                        label="💾 Download PDF",
-                                        data=pdf_bytes,
-                                        file_name=f"Health_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                                        mime="application/pdf",
-                                        type="primary"
-                                    )
-                                    st.session_state["generate_pdf"] = False # Reset state
-                                    
-                                    # AUTO UPLOAD TO S3
-                                    if HAVE_S3 and HAVE_AUTH and check_authentication():
-                                        try:
-                                            s3 = get_s3_client()
-                                            if s3:
-                                                user_email = get_current_user_email()
-                                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                                                s3_key = f"reports/{user_email}/{timestamp}_health_report.pdf"
-                                                bucket_name = os.environ.get("AWS_S3_BUCKET", "wellio-uploads")
-                                                
-                                                s3.put_object(
-                                                    Bucket=bucket_name,
-                                                    Key=s3_key,
-                                                    Body=pdf_bytes,
-                                                    ContentType='application/pdf'
-                                                )
-                                                # st.toast(f"✅ Report saved to cloud history!", icon="☁️")
-                                                
-                                                # Save metadata to Supabase (Silent)
-                                                supabase = get_supabase_client()
-                                                if supabase:
-                                                    # Try to get user. Since we use email auth, we query by email
-                                                    # to get the correct UUID for the user_files table
-                                                    user_resp = supabase.table('users').select('id').eq('email', user_email).execute()
-                                                    if user_resp.data:
-                                                        db_user_id = user_resp.data[0]['id']
-                                                    else:
-                                                        # Fallback if user not found in our custom table 
-                                                        # Or try session UUID/auth
-                                                        db_user_id = None
-                                                    
-                                                    if db_user_id:
-                                                        supabase.table('user_files').insert({
-                                                            'user_id': db_user_id,
-                                                            'file_name': f"Health_Report_{timestamp}.pdf",
-                                                            's3_bucket': bucket_name,
-                                                            's3_key': s3_key,
-                                                            'file_size_bytes': len(pdf_bytes),
-                                                            'content_type': 'application/pdf',
-                                                            'uploaded_at': datetime.now().isoformat()
-                                                        }).execute()
-                                        except Exception as e:
-                                            print(f"Auto-upload failed: {e}") 
-                                            # Fail silently or just log, don't block user download 
-                                            # Fail silently or just log, don't block user download
-
-                                except Exception as e:
-                                    st.error(f"Error generating PDF: {str(e)}")
-                                    st.session_state["generate_pdf"] = False
+                        # Display Health Insights in collapsible sections
+                        col_1, col_2 = st.columns([1, 1])
+                        
+                        with col_1:
+                            with st.expander(f"💪 {t('recommendations_title')}", expanded=True):
+                                if insights.recommendations:
+                                    for rec in insights.recommendations:
+                                        st.write(f"• {rec}")
+                                else:
+                                    st.info(t("maintain_healthy_habits"))
+                        with col_2:
+                            with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True):
+                                if insights.symptoms_to_watch:
+                                    for symptom in insights.symptoms_to_watch:
+                                        st.write(f"• {symptom}")
+                                else:
+                                    st.info(t("no_symptoms_watch"))
+                        
+                        # Disclaimer
+                      
                 
                 except Exception as e:
-                    st.warning(f"Could not save session: {str(e)}")
-
-            
-            # Cleanup
-            try:
-                os.remove(tmp_path)
-                os.rmdir(tmp_dir)
-            except:
-                pass
+                    st.error(f"{t('error_generating_insights')}: {str(e)}")
+        else:
+            st.info(t("insights_module_unavailable"))
         
-        except Exception as exc:
-            st.error(f"""
-            ❌ **{t('error_processing_video')}**
+        # Detailed Experimental Vitals removed; top-row shows compact metrics
+        
+        # ================================================================
+        # AUDIO SUMMARY (TTS)
+        # ================================================================
+        st.divider()
+        st.subheader(f"🔊 {t('audio_summary_title') if 'audio_summary_title' in locals() else 'Audio Summary'}")
+        
+        # Layout: Button on left, Player on right
+        audio_col1, audio_col2 = st.columns([1, 2])
+        
+        with audio_col1:
+            # Check for language change to trigger auto-regeneration
+            current_lang = get_current_language()
+            stored_lang = st.session_state.get("audio_generated_lang")
+            auto_regenerate = False
             
-            {str(exc)}
+            # If audio exists but language doesn't match, regenerate
+            if stored_lang and stored_lang != current_lang and "audio_summary_bytes" in st.session_state:
+                auto_regenerate = True
             
-            **{t('troubleshooting')}:**
-            - {t('ensure_good_lighting')}
-            - {t('keep_face_visible')}
-            - {t('try_different_video')}
-            - {t('ensure_video_format')}
-            """)
+            if st.button(t("generate_audio_summary") if 'generate_audio_summary' in locals() else "Generate Audio Summary", use_container_width=True) or auto_regenerate:
+                with st.spinner(t("generating_audio") if 'generating_audio' in locals() else "Generating audio..."):
+                    try:
+                        # Construct text using translations
+                        summary_text = t("audio_intro") + " "
+                        summary_text += t("audio_hr").format(value=f"{vitals.heart_rate_bpm:.0f}") + " "
+                        
+                        # Check if stress is valid
+                        if not np.isnan(vitals.stress_level):
+                            summary_text += t("audio_stress").format(value=f"{vitals.stress_level:.1f}") + " "
+                        
+                        if vitals.bp_systolic is not None and vitals.bp_diastolic is not None:
+                            summary_text += t("audio_bp").format(systolic=f"{vitals.bp_systolic:.0f}", diastolic=f"{vitals.bp_diastolic:.0f}") + " "
+                        
+                        if vitals.spo2 is not None:
+                            summary_text += t("audio_spo2").format(value=f"{vitals.spo2:.1f}") + " "
+                        
+                        # Risk Assessment
+                        # Map risk_level to translated string
+                        level_key = f"{risk_level.lower()}_risk"
+                        translated_level = t(level_key)
+                        summary_text += t("audio_risk").format(score=risk_score, level=translated_level) + " "
+                        
+                        if HAVE_GEMINI and 'insights' in locals() and not insights.error:
+                            summary_text += t("audio_insights_intro") + " "
+                            if insights.recommendations:
+                                # Clean up markdown bullets if present
+                                clean_recs = [r.replace("*", "").strip() for r in insights.recommendations]
+                                summary_text += t("audio_recs") + ". ".join(clean_recs[:3]) + ". "
+                            if insights.symptoms_to_watch:
+                                clean_sym = [s.replace("*", "").strip() for s in insights.symptoms_to_watch]
+                                summary_text += t("audio_symptoms") + ". ".join(clean_sym[:3]) + ". "
+                        
+                        # Generate Audio
+                        from gtts import gTTS
+                        
+                        tts = gTTS(text=summary_text, lang=current_lang)
+                        mp3_fp = BytesIO()
+                        tts.write_to_fp(mp3_fp)
+                        mp3_fp.seek(0)
+                        
+                        # Store bytes and language in session state
+                        st.session_state["audio_summary_bytes"] = mp3_fp.getvalue()
+                        st.session_state["audio_generated_lang"] = current_lang
+                        
+                        # If we auto-regenerated, rerun to update the player immediately
+                        if auto_regenerate:
+                            st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Error generating audio: {e}")
+        
+        with audio_col2:
+            # Display audio if available in session state
+            if "audio_summary_bytes" in st.session_state and st.session_state["audio_summary_bytes"] is not None:
+                # Create a fresh BytesIO object from stored bytes for playback
+                audio_data = st.session_state["audio_summary_bytes"]
+                st.audio(audio_data, format='audio/mp3')
+                
+                st.download_button(
+                    label="💾 " + (t("download_audio") if 'download_audio' in locals() else "Download Audio"),
+                    data=audio_data,
+                    file_name=f"Health_Summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3",
+                    mime="audio/mp3",
+                    use_container_width=True
+                )
+        
+        st.divider()
+        
+        # ================================================================
+        # SIGNAL VISUALIZATIONS (Removed per user request)
+        # ================================================================
+        
+        # st.subheader("📈 Signal Processing & Analysis")
+        
+        # Main plots
+        # fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+        
+        # Filtered signal
+        # axs[0].plot(filtered_signal.fused_signal, linewidth=1.5, color='green', alpha=0.8)
+        # axs[0].fill_between(range(len(filtered_signal.fused_signal)), 
+        #                    filtered_signal.fused_signal, alpha=0.2, color='green')
+        # axs[0].set_title("Filtered PPG Signal (Green Channel)", fontsize=12, fontweight='bold')
+        # axs[0].set_xlabel("Frame")
+        # axs[0].set_ylabel("Normalized Intensity")
+        # axs[0].grid(True, alpha=0.3)
+        
+        # Power spectrum
+        # psd_freqs is correct in new backend
+        # valid_band = ((filtered_signal.psd_freqs >= 0.75) & 
+        #              (filtered_signal.psd_freqs <= 3.0))
+        # axs[1].semilogy(filtered_signal.psd_freqs, filtered_signal.psd, 
+        #                linewidth=1.5, color='blue', label='PSD')
+        
+        # if vitals.heart_rate_bpm:
+        #     peak_freq = vitals.heart_rate_bpm / 60.0
+        #     axs[1].axvline(peak_freq, color='red', linestyle='--', linewidth=2, 
+        #                    label=f'Peak ≈ {vitals.heart_rate_bpm:.1f} BPM')
+        
+        # axs[1].set_title("Power Spectral Density (Welch)", fontsize=12, fontweight='bold')
+        # axs[1].set_xlabel("Frequency (Hz)")
+        # axs[1].set_ylabel("Power (log scale)")
+        # axs[1].legend()
+        # axs[1].grid(True, alpha=0.3, which='both')
+        # axs[1].set_xlim([0, 4])
+        
+        # st.pyplot(fig)
+        
+        # RR histogram
+        # if vitals.rr_intervals.size > 0:
+        #     st.subheader("💓 Heart Rate Variability (RR Intervals)")
+        #     
+        #     fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+        #     
+        #     # Histogram
+        #     ax1.hist(vitals.rr_intervals, bins=max(5, len(vitals.rr_intervals)//3), 
+        #             color='steelblue', edgecolor='black', alpha=0.7)
+        #     ax1.set_title("RR Interval Distribution", fontweight='bold')
+        #     ax1.set_xlabel("RR Interval (ms)")
+        #     ax1.set_ylabel("Frequency")
+        #     ax1.grid(True, alpha=0.3)
+        #     
+        #     # Time series
+        #     ax2.plot(vitals.rr_intervals, marker='o', linestyle='-', 
+        #             color='darkgreen', markersize=4, linewidth=1)
+        #     ax2.set_title("RR Intervals Over Time", fontweight='bold')
+        #     ax2.set_xlabel("Beat #")
+        #     ax2.set_ylabel("RR Interval (ms)")
+        #     ax2.grid(True, alpha=0.3)
+        #     
+        #     st.pyplot(fig2)
+        #     
+        #     # Calculate pNN50
+        #     pnn50 = 0.0
+        #     if vitals.rr_intervals.size > 1:
+        #         rr_diff = np.abs(np.diff(vitals.rr_intervals))
+        #         pnn50 = 100.0 * np.sum(rr_diff > 0.05) / len(rr_diff)
+        #
+        #     st.info(f"""
+        #     **HRV Summary:**
+        #     - **# of beats detected:** {len(vitals.rr_intervals) + 1}
+        #     - **SDNN (std dev):** {vitals.sdnn:.1f} ms
+        #     - **Mean RR:** {np.mean(vitals.rr_intervals)*1000:.0f} ms
+        #     - **pNN50:** {pnn50:.1f}%
+        #     """)
+        # else:
+        #     st.warning("⚠️  Not enough beats detected for HRV analysis. Try a longer or clearer video.")
+        
+        # Advanced plots
+
+        
+        # ================================================================
+        # SESSION CAPTURE & PDF DOWNLOAD
+        # ================================================================
+        
+        if HAVE_HISTORY:
+            st.divider()
+            st.subheader("📄 Save & Download")
+            
+            # Capture session data
             try:
-                os.remove(tmp_path)
-                os.rmdir(tmp_dir)
-            except:
-                pass
+                # Calculate BMI
+                height_m = st.session_state.get("profile_height", 170) / 100.0
+                weight_kg = st.session_state.get("profile_weight", 70)
+                bmi = weight_kg / (height_m ** 2)
+                
+                # Get AI insights if available
+                if HAVE_GEMINI and 'insights' in locals():
+                    detailed_analysis = insights.detailed_analysis if not insights.error else ""
+                    recommendations = insights.recommendations if not insights.error else []
+                    symptoms_to_watch = insights.symptoms_to_watch if not insights.error else []
+                else:
+                    detailed_analysis = ""
+                    recommendations = []
+                    symptoms_to_watch = []
+                
+                # Create session data
+                session_data = SessionData(
+                    session_id=str(uuid.uuid4()),
+                    timestamp=datetime.now().isoformat(),
+                    analysis_type="Health Scan",
+                    
+                    # Profile
+                    age=st.session_state.get("profile_age", 30),
+                    gender=st.session_state.get("profile_gender", "Prefer not to say"),
+                    height=st.session_state.get("profile_height", 170),
+                    weight=st.session_state.get("profile_weight", 70),
+                    bmi=bmi,
+                    diet=st.session_state.get("profile_diet", "Non-Vegetarian"),
+                    exercise=st.session_state.get("profile_exercise", "3–4x/week"),
+                    sleep=st.session_state.get("profile_sleep", 7.0),
+                    smoking=st.session_state.get("profile_smoking", "Never"),
+                    drinking=st.session_state.get("profile_drinking", "Never"),
+                    
+                    # Vitals
+                    heart_rate=float(vitals.heart_rate_bpm),
+                    heart_rate_confidence=vitals.heart_rate_confidence,
+                    stress_level=float(vitals.stress_level) if not np.isnan(vitals.stress_level) else 5.0,
+                    stress_label=vitals.stress_details.label if vitals.stress_details else "Unavailable",
+                    stress_score=vitals.stress_details.score if vitals.stress_details else None,
+                    stress_reason=vitals.stress_details.reason if vitals.stress_details else "",
+                    bp_systolic=float(vitals.bp_systolic) if vitals.bp_systolic is not None else None,
+                    bp_diastolic=float(vitals.bp_diastolic) if vitals.bp_diastolic is not None else None,
+                    bp_label=vitals.bp_details.label if vitals.bp_details else "Unavailable",
+                    bp_reason=vitals.bp_details.reason if vitals.bp_details else "",
+                    bp_confidence=vitals.bp_details.confidence if vitals.bp_details else 0,
+                    bp_disclaimer=vitals.bp_details.disclaimer if vitals.bp_details else "",
+                    spo2=float(vitals.spo2) if vitals.spo2 is not None else None,
+                    hrv_sdnn=float(vitals.sdnn),
+                    hrv_pnn50=float(100.0 * np.sum(np.abs(np.diff(vitals.rr_intervals)) > 0.05) / len(np.diff(vitals.rr_intervals))) if vitals.rr_intervals.size > 1 else 0.0,
+                    rr_intervals_count=len(vitals.rr_intervals) + 1 if vitals.rr_intervals.size > 0 else 0,
+                    
+                    # Risk
+                    risk_score=risk_score,
+                    risk_level=risk_level,
+                    risk_factors=profile_risk["risk_factors"],
+                    protective_factors=profile_risk["protective_factors"],
+                    
+                    # AI Insights
+                    detailed_analysis=detailed_analysis,
+                    recommendations=recommendations,
+                    symptoms_to_watch=symptoms_to_watch,
+                    
+                    # Visualizations (Removed per user request)
+                    signal_plot=None, # fig_to_base64(fig),
+                    hrv_plot=None # fig_to_base64(fig2) if vitals.rr_intervals.size > 0 else None
+                )
+                
+                # Save session
+                username = get_current_user_email() or "default_user"
+                if save_session(username, session_data):
+                    st.success(f"✅ Session saved to history!")
+                    st.session_state["current_session"] = session_data
+                else:
+                    st.warning("⚠️ Could not save session to history")
+                
+                # PDF Download button
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("📄 Generate PDF Report", type="secondary"):
+                        st.session_state["generate_pdf"] = True
+                        st.rerun()
+                
+                # Show download button if PDF generation was requested
+                if st.session_state.get("generate_pdf", False):
+                    with col2:
+                        with st.spinner("Generating PDF..."):
+                            try:
+                                pdf_bytes = generate_health_report(session_data)
+                                st.download_button(
+                                    label="💾 Download PDF",
+                                    data=pdf_bytes,
+                                    file_name=f"Health_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                    mime="application/pdf",
+                                    type="primary"
+                                )
+                                st.session_state["generate_pdf"] = False # Reset state
+                                
+                                # AUTO UPLOAD TO S3
+                                if HAVE_S3 and HAVE_AUTH and check_authentication():
+                                    try:
+                                        s3 = get_s3_client()
+                                        if s3:
+                                            user_email = get_current_user_email()
+                                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                            s3_key = f"reports/{user_email}/{timestamp}_health_report.pdf"
+                                            bucket_name = os.environ.get("AWS_S3_BUCKET", "wellio-uploads")
+                                            
+                                            s3.put_object(
+                                                Bucket=bucket_name,
+                                                Key=s3_key,
+                                                Body=pdf_bytes,
+                                                ContentType='application/pdf'
+                                            )
+                                            # st.toast(f"✅ Report saved to cloud history!", icon="☁️")
+                                            
+                                            # Save metadata to Supabase (Silent)
+                                            supabase = get_supabase_client()
+                                            if supabase:
+                                                # Try to get user. Since we use email auth, we query by email
+                                                # to get the correct UUID for the user_files table
+                                                user_resp = supabase.table('users').select('id').eq('email', user_email).execute()
+                                                if user_resp.data:
+                                                    db_user_id = user_resp.data[0]['id']
+                                                else:
+                                                    # Fallback if user not found in our custom table 
+                                                    # Or try session UUID/auth
+                                                    db_user_id = None
+                                                
+                                                if db_user_id:
+                                                    supabase.table('user_files').insert({
+                                                        'user_id': db_user_id,
+                                                        'file_name': f"Health_Report_{timestamp}.pdf",
+                                                        's3_bucket': bucket_name,
+                                                        's3_key': s3_key,
+                                                        'file_size_bytes': len(pdf_bytes),
+                                                        'content_type': 'application/pdf',
+                                                        'uploaded_at': datetime.now().isoformat()
+                                                    }).execute()
+                                    except Exception as e:
+                                        print(f"Auto-upload failed: {e}") 
+                                        # Fail silently or just log, don't block user download 
+                                        # Fail silently or just log, don't block user download
+
+                            except Exception as e:
+                                st.error(f"Error generating PDF: {str(e)}")
+                                st.session_state["generate_pdf"] = False
+            
+            except Exception as e:
+                st.warning(f"Could not save session: {str(e)}")
+
+        
+        # Cleanup
+        try:
+            os.remove(tmp_path)
+            os.rmdir(tmp_dir)
+        except:
+            pass
+    
+    except Exception as exc:
+        st.error(f"""
+        ❌ **{t('error_processing_video')}**
+        
+        {str(exc)}
+        
+        **{t('troubleshooting')}:**
+        - {t('ensure_good_lighting')}
+        - {t('keep_face_visible')}
+        - {t('try_different_video')}
+        - {t('ensure_video_format')}
+        """)
+        try:
+            os.remove(tmp_path)
+            os.rmdir(tmp_dir)
+        except:
+            pass
 
 # ============================================================================
 # FOOTER & RESOURCES
