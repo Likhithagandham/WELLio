@@ -2,6 +2,7 @@
 <html>
 
 <head>
+    <script src="face-api.min.js"></script>
     <style>
         :root {
             --primary-color: #4A6741;
@@ -18,7 +19,6 @@
             flex-direction: column;
             align-items: center;
             background-color: transparent;
-            /* Let Streamlit bg show through */
             color: var(--text-color);
         }
 
@@ -39,7 +39,6 @@
             background-color: #e0e0e0;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             aspect-ratio: 16/9;
-            /* Enforce aspect ratio */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -50,9 +49,7 @@
             height: 100%;
             object-fit: cover;
             transform: scaleX(-1);
-            /* Mirror effect */
             display: none;
-            /* Hidden until started */
         }
 
         #placeholder {
@@ -64,8 +61,7 @@
             text-align: center;
             width: 100%;
             height: 100%;
-            background-image:
-                radial-gradient(circle at center, #eee 0%, #ddd 100%);
+            background-image: radial-gradient(circle at center, #eee 0%, #ddd 100%);
         }
 
         #placeholder svg {
@@ -75,10 +71,7 @@
             opacity: 0.5;
         }
 
-        #canvas {
-            display: none;
-        }
-
+        /* Face Guide Overlay */
         .overlay {
             position: absolute;
             top: 50%;
@@ -86,20 +79,18 @@
             transform: translate(-50%, -50%);
             border: 3px dashed rgba(255, 255, 255, 0.7);
             border-radius: 50%;
-            /* Oval */
             width: 28%;
-            /* Responsive width */
+            /* Vertical Oval */
             height: 80%;
-            /* Responsive height */
             pointer-events: none;
             transition: all 0.3s ease;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
-            /* Dim outside */
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+            /* Dim */
             display: none;
-            /* Hidden until camera starts */
+            z-index: 5;
         }
 
-        /* Adjust oval shape explicitly */
+        /* Box-shadow trick for overlay hole */
         .overlay::after {
             content: "";
             display: block;
@@ -112,47 +103,68 @@
             display: block;
         }
 
+        /* Status Colors */
         .overlay.recording {
             border-color: #ef4444;
             /* Red */
             border-style: solid;
             border-width: 4px;
-            animation: pulse 1.5s infinite;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
         }
 
-        .overlay.aligned {
+        .overlay.good {
             border-color: #22c55e;
             /* Green */
             border-style: solid;
             border-width: 3px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
         }
 
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4), 0 0 0 9999px rgba(0, 0, 0, 0.5);
-            }
+        .overlay.bad {
+            border-color: #ef4444;
+            /* Red */
+            border-style: dashed;
+            border-width: 3px;
+        }
 
-            70% {
-                box-shadow: 0 0 0 20px rgba(239, 68, 68, 0), 0 0 0 9999px rgba(0, 0, 0, 0.5);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0), 0 0 0 9999px rgba(0, 0, 0, 0.5);
-            }
+        .overlay.warning {
+            border-color: #f59e0b;
+            /* Orange/Yellow */
+            border-style: dashed;
+            border-width: 3px;
         }
 
         #status-bar {
             width: 100%;
             text-align: center;
-            font-size: 15px;
-            font-weight: 500;
-            padding: 8px 12px;
+            font-size: 16px;
+            font-weight: 600;
+            padding: 10px 12px;
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(0, 0, 0, 0.05);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
             color: #444;
             min-height: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        #status-bar.good {
+            background-color: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
+        #status-bar.bad {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+
+        #status-bar.warning {
+            background-color: #fef3c7;
+            color: #92400e;
+            border-color: #fde68a;
         }
 
         #controls {
@@ -171,7 +183,6 @@
             font-size: 14px;
             font-weight: 600;
             border-radius: 6px;
-            /* Streamlit style */
             cursor: pointer;
             transition: all 0.2s ease;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -183,11 +194,6 @@
         button:hover {
             background: var(--primary-hover);
             transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
-        }
-
-        button:active {
-            transform: translateY(0);
         }
 
         button:disabled {
@@ -214,18 +220,33 @@
             background-color: #4b5563;
         }
 
-        /* Countdown Overlay inside Camera */
         #countdown-overlay {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 72px;
+            font-size: 80px;
             font-weight: 800;
             color: white;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            text-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             display: none;
             z-index: 10;
+        }
+
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            font-weight: bold;
+            color: #666;
+            display: none;
         }
     </style>
 </head>
@@ -233,6 +254,7 @@
 <body>
     <div id="main-container">
         <div id="camera-wrapper">
+            <div id="loading-overlay">Loading Face AI...</div>
             <div id="placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                     <path
@@ -241,6 +263,9 @@
                 <span>Click "Start Camera" to enable access</span>
             </div>
             <video id="video" autoplay playsinline muted></video>
+            <!-- Canvas for face-api debugging (hidden for production) -->
+            <canvas id="overlay-canvas"
+                style="position: absolute; top: 0; left: 0; pointer-events: none; display: none;"></canvas>
             <div id="overlay" class="overlay"></div>
             <div id="countdown-overlay">3</div>
         </div>
@@ -273,7 +298,7 @@
     </div>
 
     <script>
-        // Streamlit Interface
+        // Streamlit Component Interface
         function sendMessageToStreamlitClient(type, data) {
             var outData = Object.assign({
                 isStreamlitMessage: true,
@@ -287,18 +312,19 @@
         }
 
         function updateHeight() {
-            // Add a little buffer to prevent scrollbars
             const height = document.body.scrollHeight;
             sendMessageToStreamlitClient("streamlit:setFrameHeight", { height: height });
         }
 
-        // Resize observer
         const resizeObserver = new ResizeObserver(() => updateHeight());
         resizeObserver.observe(document.body);
 
         window.addEventListener("load", function () {
             sendMessageToStreamlitClient("streamlit:componentReady", { apiVersion: 1 });
             setTimeout(updateHeight, 100);
+
+            // Load Face API models silently
+            loadModels();
         });
 
         // App Logic
@@ -306,19 +332,36 @@
         let mediaRecorder = null;
         let recordedChunks = [];
         let recordingTimeout = null;
-        let countdownInterval = null;
+        let detectionInterval = null;
+        let isModelsLoaded = false;
+        let isRecording = false;
+
+        async function loadModels() {
+            try {
+                const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                // Using tiny face detector for speed
+                await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
+                // await faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelUrl); // Optional for more precision
+                console.log("Face API Models loaded");
+                isModelsLoaded = true;
+            } catch (err) {
+                console.error("Error loading Face Models", err);
+                document.getElementById('status-bar').textContent = "⚠️ AI Load Failed. Manual mode only.";
+            }
+        }
 
         async function startCamera() {
             try {
-                // UI updates before stream for responsiveness
+                if (!isModelsLoaded) {
+                    document.getElementById('loading-overlay').style.display = 'flex';
+                    await loadModels();
+                    document.getElementById('loading-overlay').style.display = 'none';
+                }
+
                 document.getElementById('status-bar').textContent = 'Requesting camera access...';
 
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: 'user'
-                    },
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
                     audio: false
                 });
 
@@ -332,41 +375,127 @@
 
                 // Update controls
                 document.getElementById('startBtn').disabled = true;
-                document.getElementById('recordBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = false;
-                document.getElementById('status-bar').textContent = 'Position your face in the oval guide';
-                document.getElementById('overlay').classList.add('aligned'); // Default to aligned visual for now
+
+                // Start Face Detection Loop
+                startFaceDetection(video);
 
                 updateHeight();
 
             } catch (err) {
                 document.getElementById('status-bar').textContent = 'Error: ' + err.message;
-                document.getElementById('status-bar').style.color = 'red';
+                document.getElementById('status-bar').className = 'bad';
                 console.error('Camera error:', err);
+                document.getElementById('loading-overlay').style.display = 'none';
+            }
+        }
+
+        function startFaceDetection(video) {
+            const statusBar = document.getElementById('status-bar');
+            const overlay = document.getElementById('overlay');
+            const recordBtn = document.getElementById('recordBtn');
+
+            detectionInterval = setInterval(async () => {
+                if (isRecording) return; // Don't detect while recording
+
+                if (!isModelsLoaded || video.paused || video.ended) return;
+
+                // Detect Face
+                const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 });
+                const detection = await faceapi.detectSingleFace(video, options);
+
+                // Default State
+                let status = "bad";
+                let msg = "No face detected";
+
+                if (detection) {
+                    const { box } = detection;
+                    const videoWidth = video.videoWidth;
+                    const videoHeight = video.videoHeight;
+
+                    // Simple logic checks
+                    const faceWidthPct = box.width / videoWidth;
+                    const centerX = box.x + box.width / 2;
+                    const centerY = box.y + box.height / 2;
+
+                    // 1. Center Check (rough)
+                    const isCenteredX = centerX > videoWidth * 0.3 && centerX < videoWidth * 0.7;
+                    const isCenteredY = centerY > videoHeight * 0.2 && centerY < videoHeight * 0.8;
+
+                    // 2. Distance Check (Face Width)
+                    // If face is too small (< 15% of width) -> Too far
+                    // If face is too big (> 60% of width) -> Too close
+
+                    if (faceWidthPct < 0.15) {
+                        status = "warning";
+                        msg = "⚠️ Too far! Move closer.";
+                    } else if (faceWidthPct > 0.65) {
+                        status = "warning";
+                        msg = "⚠️ Too close! Move back.";
+                    } else if (!isCenteredX || !isCenteredY) {
+                        status = "warning";
+                        msg = "⚠️ Center your face";
+                    } else {
+                        // 3. Brightness Check (Simple heuristic)
+                        // We can't easily get pixel data without canvas, so skip for now or use small canvas.
+                        // Assuming simple check passes:
+                        status = "good";
+                        msg = "✅ Perfect! Ready to record.";
+                    }
+                } else {
+                    msg = "❌ No face detected. Position yourself in view.";
+                }
+
+                // Update UI based on Analysis
+                updateUIState(status, msg);
+
+            }, 500); // Check every 500ms
+        }
+
+        function updateUIState(status, message) {
+            const statusBar = document.getElementById('status-bar');
+            const overlay = document.getElementById('overlay');
+            const recordBtn = document.getElementById('recordBtn');
+
+            statusBar.textContent = message;
+            statusBar.className = status;
+
+            overlay.classList.remove('good', 'bad', 'warning');
+
+            // Only enable record if status is good (or warning in pinch)
+            if (status === 'good') {
+                overlay.classList.add('good');
+                recordBtn.disabled = false;
+            } else {
+                overlay.classList.add(status); // warning or bad
+                recordBtn.disabled = true;
             }
         }
 
         function startRecording() {
-            recordedChunks = [];
+            // Stop detection loop to save CPU
+            isRecording = true;
+            clearInterval(detectionInterval);
 
-            // UI State
+            // UI Update
+            recordedChunks = [];
             document.getElementById('recordBtn').disabled = true;
             document.getElementById('stopBtn').disabled = true;
-            const countdownEl = document.getElementById('countdown-overlay');
-            const statusEl = document.getElementById('status-bar');
 
-            // Countdown Sequence
+            // Countdown
+            const countdownEl = document.getElementById('countdown-overlay');
             let count = 3;
             countdownEl.textContent = count;
             countdownEl.style.display = 'block';
-            statusEl.textContent = 'Get ready...';
+            document.getElementById('status-bar').textContent = 'Get ready...';
+            document.getElementById('status-bar').className = '';
 
-            countdownInterval = setInterval(() => {
+            const countdownInt = setInterval(() => {
                 count--;
                 if (count > 0) {
                     countdownEl.textContent = count;
                 } else {
-                    clearInterval(countdownInterval);
+                    clearInterval(countdownInt);
                     countdownEl.style.display = 'none';
                     actuallyStartRecording();
                 }
@@ -375,21 +504,16 @@
 
         function actuallyStartRecording() {
             try {
-                // Setup Recorder
+                const stream = document.getElementById('video').srcObject;
                 let options = { mimeType: 'video/webm;codecs=vp8' };
                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                    // Fallback types
-                    if (MediaRecorder.isTypeSupported('video/webm')) options = { mimeType: 'video/webm' };
-                    else if (MediaRecorder.isTypeSupported('video/mp4')) options = { mimeType: 'video/mp4' };
-                    else options = {}; // Browser default
+                    options = { mimeType: 'video/webm' }; // Fallback
                 }
 
                 mediaRecorder = new MediaRecorder(stream, options);
 
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        recordedChunks.push(event.data);
-                    }
+                    if (event.data.size > 0) recordedChunks.push(event.data);
                 };
 
                 mediaRecorder.onstop = () => {
@@ -398,26 +522,24 @@
                     reader.onloadend = () => {
                         const base64data = reader.result.split(',')[1];
                         setComponentValue(base64data);
-                        console.log("Video data sent");
                     };
                     reader.readAsDataURL(blob);
-
-                    document.getElementById('status-bar').textContent = 'Processing...';
+                    // Reset UI
                     stopCamera();
+                    document.getElementById('status-bar').textContent = 'Processing Recording...';
+                    document.getElementById('status-bar').className = 'good';
                 };
 
                 mediaRecorder.start();
 
                 // Visuals
-                document.getElementById('overlay').classList.remove('aligned');
+                document.getElementById('overlay').classList.remove('good');
                 document.getElementById('overlay').classList.add('recording');
 
-                // Timer
                 let remaining = 15;
                 const statusEl = document.getElementById('status-bar');
                 statusEl.textContent = `Recording... ${remaining}s`;
                 statusEl.style.color = '#ef4444';
-                statusEl.style.fontWeight = 'bold';
 
                 const updateTimer = setInterval(() => {
                     remaining--;
@@ -428,7 +550,6 @@
                     }
                 }, 1000);
 
-                // Auto-stop
                 recordingTimeout = setTimeout(() => {
                     if (mediaRecorder && mediaRecorder.state === 'recording') {
                         mediaRecorder.stop();
@@ -436,8 +557,8 @@
                 }, 15000);
 
             } catch (err) {
-                document.getElementById('status-bar').textContent = 'Recording error: ' + err.message;
                 console.error(err);
+                document.getElementById('status-bar').textContent = 'Error: ' + err.message;
             }
         }
 
@@ -446,30 +567,27 @@
                 mediaRecorder.stop();
                 clearTimeout(recordingTimeout);
             }
-
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
                 stream = null;
             }
+            clearInterval(detectionInterval);
+            isRecording = false;
 
-            // Reset UI
             document.getElementById('video').srcObject = null;
             document.getElementById('video').style.display = 'none';
             document.getElementById('placeholder').style.display = 'flex';
-            document.getElementById('overlay').classList.remove('active', 'recording', 'aligned');
-            document.getElementById('countdown-overlay').style.display = 'none';
+            document.getElementById('overlay').classList.remove('active', 'recording', 'good', 'bad', 'warning');
 
             document.getElementById('startBtn').disabled = false;
             document.getElementById('recordBtn').disabled = true;
             document.getElementById('stopBtn').disabled = true;
 
             const statusEl = document.getElementById('status-bar');
-            if (!statusEl.textContent.includes('Processing')) {
-                statusEl.textContent = 'Camera stopped';
+            if (statusEl.textContent !== 'Processing Recording...') {
+                statusEl.textContent = 'Ready';
+                statusEl.className = '';
             }
-            statusEl.style.color = '#444';
-            statusEl.style.fontWeight = '500';
-
             updateHeight();
         }
 
