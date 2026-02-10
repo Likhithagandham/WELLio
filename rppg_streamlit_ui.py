@@ -801,7 +801,7 @@ if HAVE_HISTORY:
 # MAIN APP
 # ============================================================================
 
-st.title(f"🩺 {t('app_title')}")
+st.title(f"🩺 {t('app_title')}", help=t('mandatory_disclaimer'))
 
 # ============================================================================
 # HISTORICAL SESSION REPLAY

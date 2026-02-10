@@ -243,6 +243,7 @@ TRANSLATIONS = {
         # Disclaimers
         "disclaimer_title": "⚠️ Important Disclaimer",
         "disclaimer_text": "This is an experimental research tool. Results are estimates and should NOT be used for medical diagnosis or treatment decisions. Always consult healthcare professionals for medical advice.",
+        "mandatory_disclaimer": "This system is a research prototype. Blood pressure and SpO₂ values are experimental estimates derived from video signals and are not intended for medical diagnosis.",
         
         # PDF Report Labels
         "pdf_report_title": "Wellio Health Report",
