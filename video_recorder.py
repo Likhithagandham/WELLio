@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional
 
 # Absolute path to the component directory
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-COMPONENT_DIR = os.path.join(PARENT_DIR, "components", "video_recorder")
+COMPONENT_DIR = os.path.join(PARENT_DIR, "vrec_static")
 
 # Declare the component
 if not os.path.exists(os.path.join(COMPONENT_DIR, "index.html")):

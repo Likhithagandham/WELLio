@@ -31,11 +31,37 @@ def live_camera_interface():
     # Custom Live Recorder Component (Cloud Safe, MediaRecorder API)
     from video_recorder import video_recorder, process_recorder_output
     
-    recorder_output = video_recorder(key="live_video_recorder")
-    
-    if recorder_output:
-        st.info("✅ Clip captured! Processing frames in memory...")
-        return process_recorder_output(recorder_output)
+    # Track fallback state
+    if "use_fallback_uploader" not in st.session_state:
+        st.session_state.use_fallback_uploader = False
+
+    if not st.session_state.use_fallback_uploader:
+        recorder_output = video_recorder(key="live_video_recorder")
+        
+        # If the recorder is shown, provide an "it's not working" button
+        st.caption("Camera not appearing? [Click here to use standard upload fallback]")
+        if st.button("Use Standard Upload Fallback", key="fallback_btn"):
+            st.session_state.use_fallback_uploader = True
+            st.rerun()
+
+        if recorder_output:
+            st.info("✅ Clip captured! Processing frames in memory...")
+            return process_recorder_output(recorder_output)
+    else:
+        st.warning("⚠️ Using standard upload fallback. Please record a video on your device and upload it here.")
+        uploaded_file = st.file_uploader(
+            "Select Recorded Video", 
+            type=["mp4", "mov", "avi", "webm"],
+            help="Your browser's camera component failed to load. Use this to upload a 10-15s recording."
+        )
+        
+        if st.button("Reset Camera Component", key="reset_cam"):
+            st.session_state.use_fallback_uploader = False
+            st.rerun()
+
+        if uploaded_file:
+            from live_camera import process_upload_in_memory
+            return process_upload_in_memory(uploaded_file)
             
     return None
 
