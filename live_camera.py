@@ -34,8 +34,7 @@ def live_camera_interface():
     uploaded_file = st.file_uploader(
         "Start In-Memory Capture", 
         type=["mp4", "mov", "avi", "webm"],
-        capture="user",
-        help="This opens your native camera for a continuous recording."
+        help="Capture or upload a 10-15s video for in-memory analysis."
     )
     
     if uploaded_file:
