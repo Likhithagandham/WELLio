@@ -910,7 +910,7 @@ if HAVE_HISTORY and st.session_state.get("viewing_history", False):
                 
                 with col_2:
                     if session.symptoms_to_watch:
-                        with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True):
+                        with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True, key="symptoms_watch_hist"):
                             for symptom in session.symptoms_to_watch:
                                 st.write(f"• {symptom}")
                 
@@ -2006,7 +2006,7 @@ if uploaded_file is not None or recorded_file_path is not None:
                                     else:
                                         st.info(t("maintain_healthy_habits"))
                             with col_2:
-                                with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True):
+                                with st.expander(f"🚨 {t('symptoms_watch_title')}", expanded=True, key="symptoms_watch_main"):
                                     if insights.symptoms_to_watch:
                                         for symptom in insights.symptoms_to_watch:
                                             st.write(f"• {symptom}")
