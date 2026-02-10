@@ -14,18 +14,23 @@ Security Features:
 - Secure cloud storage
 """
 
-import bcrypt
-import re
 import os
+import re
+import json
+import base64
+from typing import Tuple, Optional, Dict, Any, List
+from datetime import datetime, timedelta
 from pathlib import Path
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional, Tuple, List
-from dotenv import load_dotenv
+import requests
+import jwt
+import bcrypt
+import streamlit as st
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Ensure env vars are loaded module-level
+load_dotenv(override=True)
 
 
 # ============================================================================
@@ -543,7 +548,6 @@ def exchange_code_for_session(auth_code: str, supabase_client: Optional[Client] 
     except Exception as e:
         print(f"Error exchanging code: {e}")
         return False, None, f"Authentication error: {str(e)}"
-
 
 
 # ============================================================================
