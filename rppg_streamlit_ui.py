@@ -31,6 +31,7 @@ load_dotenv(override=True)
 
 from rppg_refactored import (
     estimate_vitals_from_video,
+    estimate_vitals_from_frames,
     HAVE_MEDIAPIPE,
     get_bp_category
 )
@@ -1594,62 +1595,24 @@ recording_mode = st.radio(
 uploaded_file = None
 recorded_file_path = None
 
-if recording_mode == "live":
-    recorded_file_path = live_camera_interface()
-    
-    if recorded_file_path:
-        st.success("✅ Video ready for analysis!")
-    else:
-        st.info("💡 Follow the wizard steps to capture or upload your video.")
+in_memory_data = None
 
+if recording_mode == "live":
+    in_memory_data = live_camera_interface()
+    if in_memory_data:
+        start_analysis = True
+        st.success("✅ Buffer ready. Starting analysis...")
 else:
     uploaded_file = st.file_uploader(
         f"📹 {t('upload_video_title')}",
         type=["mp4", "mov", "avi", "mkv"],
         help=t("upload_video_help")
     )
-
-
-# Upload Instructions as dropdown
-with st.expander(f"📋 {t('upload_instructions_title')}"):
-    st.markdown(f"""
-
-    - {t('requirement_lighting')}
-    - {t('requirement_position')}
-    - {t('requirement_duration')}
-    """)
-
-
-# ============================================================================
-# VIDEO PROCESSING
-# ============================================================================
-
-video_source_ready = False
-start_analysis = False
-
-if uploaded_file is not None or recorded_file_path is not None:
-    # Create temp path
-    tmp_dir = tempfile.mkdtemp()
-    tmp_path = os.path.join(tmp_dir, "video_input.mp4")
-    
-    if uploaded_file is not None:
-        # Handle Upload
-        with open(tmp_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        # Manual trigger for uploads
-        if st.button(f"🔍 {t('analyze_button')}", type="primary"):
+    if uploaded_file and st.button(f"🔍 {t('analyze_button')}", type="primary"):
+        from live_camera import process_upload_in_memory
+        in_memory_data = process_upload_in_memory(uploaded_file)
+        if in_memory_data:
             start_analysis = True
-            
-    elif recorded_file_path is not None:
-        # Handle Live Recording
-        try:
-            shutil.copy(recorded_file_path, tmp_path)
-            # Automatic trigger for live recordings
-            start_analysis = True
-            st.info("Starting analysis automatically...")
-        except Exception as e:
-            st.error(f"Error processing recorded file: {e}")
 
     # Check if profile is completed
     profile_completed = st.session_state.get("profile_completed", False)
@@ -1674,10 +1637,13 @@ if uploaded_file is not None or recorded_file_path is not None:
                 # Main pipeline
                 # Main pipeline
                 # progress_callback not supported in new backend
-                vitals, filtered_signal, risk = estimate_vitals_from_video(
-                    tmp_path,
-                    use_mediapipe=use_mediapipe
-                )
+                if in_memory_data:
+                    frames, fps = in_memory_data
+                    vitals, filtered_signal, risk = estimate_vitals_from_frames(frames, fps)
+                else:
+                    # Fallback for unexpected cases
+                    st.error("Missing in-memory data")
+                    st.stop()
                 
                 # Monkey-patch missing UI properties for compatibility
                 # Confidence

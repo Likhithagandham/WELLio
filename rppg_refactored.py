@@ -168,6 +168,19 @@ def extract_signals(video_path: str) -> MultiROISignals:
     if fs <= 1 or fs > 120:
         fs = 30.0
 
+    frames = []
+    while True:
+        ok, frame = cap.read()
+        if not ok: break
+        frames.append(frame)
+    cap.release()
+    
+    return extract_signals_from_frames(frames, fs)
+
+def extract_signals_from_frames(frames: List[np.ndarray], fs: float) -> MultiROISignals:
+    if not frames:
+        raise RuntimeError("No frames to process")
+
     g_f, g_l, g_r = [], [], []
     centers, brightness = [], []
     valid = total = 0
@@ -175,10 +188,7 @@ def extract_signals(video_path: str) -> MultiROISignals:
     mp_face = mp.solutions.face_mesh.FaceMesh(max_num_faces=1) if USE_MEDIAPIPE else None
     haar = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
+    for frame in frames:
         total += 1
         h, w = frame.shape[:2]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -201,15 +211,14 @@ def extract_signals(video_path: str) -> MultiROISignals:
                 g_f.append(gf); g_l.append(gl); g_r.append(gr)
                 face_found = True
 
-        if not face_found and not (USE_MEDIAPIPE and mp_face):
-             # Fallback to Haar if MP not used or configured
+        if not face_found:
+             # Fallback to Haar
              faces = haar.detectMultiScale(gray, 1.3, 5)
              if len(faces) > 0:
                  x,y,w_box,h_box = faces[0]
-                 # Simple center extraction for Haar fallback
                  roi = frame[y:y+h_box, x:x+w_box]
                  g = np.mean(roi[:,:,1])
-                 g_f.append(g); g_l.append(g); g_r.append(g) # duplicate for now
+                 g_f.append(g); g_l.append(g); g_r.append(g)
                  centers.append([x+w_box//2, y+h_box//2])
                  face_found = True
 
@@ -218,7 +227,6 @@ def extract_signals(video_path: str) -> MultiROISignals:
         else:
             valid += 1
 
-    cap.release()
     if mp_face:
         mp_face.close()
 
@@ -270,11 +278,12 @@ def process_signals(sig: MultiROISignals) -> FilteredSignal:
     if len(sig.brightness) > 5:
         lighting = np.std(np.diff(sig.brightness))
 
-    confidence = int(
-        0.5*min((peak_ratio if peak_ratio else 0)*250,100) +
-        0.3*max(0,100-motion*12) +
-        0.2*max(0,100-lighting*8)
+    raw_conf = (
+        0.5*min((peak_ratio if (peak_ratio and not np.isnan(peak_ratio)) else 0)*250, 100) +
+        0.3*max(0, 100-(motion if not np.isnan(motion) else 0)*12) +
+        0.2*max(0, 100-(lighting if not np.isnan(lighting) else 0)*8)
     )
+    confidence = int(raw_conf) if not np.isnan(raw_conf) else 0
     quality = round((confidence/100)*10,1)
 
     return FilteredSignal(fused, sig.fps, freqs, psd, confidence, quality)
@@ -441,7 +450,7 @@ def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float],
     # 2. Modifiers
     
     # Heart Rate
-    if heart_rate:
+    if heart_rate and not np.isnan(heart_rate):
         if heart_rate > 100:
             sbp += 10; dbp += 5
             reasons.append("Elevated HR")
@@ -450,7 +459,7 @@ def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float],
             reasons.append("Low HR")
 
     # HRV
-    if hrv_sdnn:
+    if hrv_sdnn and not np.isnan(hrv_sdnn):
         if hrv_sdnn < 20:
             sbp += 10
             reasons.append("Very Low HRV")
@@ -468,7 +477,7 @@ def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float],
             reasons.append("High Stress")
 
     # RR Interval
-    if rr_interval_ms:
+    if rr_interval_ms and not np.isnan(rr_interval_ms):
         if rr_interval_ms < 500:
             sbp += 10
             reasons.append("Very Low RR")
@@ -481,11 +490,6 @@ def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float],
     dbp = max(50, min(130, dbp))
 
     # 4. Labeling
-    # SBP < 90 OR DBP < 60 -> Low
-    # SBP 90–120 AND DBP 60–80 -> Normal
-    # SBP 120–140 OR DBP 80–90 -> High-Normal
-    # SBP > 140 OR DBP > 90 -> High
-    
     label = get_bp_category(sbp, dbp)
 
     reason = "Experimental estimate based on physiological metrics."
@@ -510,7 +514,7 @@ def calculate_bp(heart_rate: Optional[float], hrv_sdnn: Optional[float],
 
 def estimate_vitals(sig: MultiROISignals, filt: FilteredSignal) -> VitalsEstimate:
     hr, _, _, _ = welch_hr(filt.fused_signal, sig.fps)
-    hr_valid = hr is not None and 40 <= hr <= 180 and filt.confidence_percent >= 40 
+    hr_valid = hr is not None and not np.isnan(hr) and 40 <= hr <= 180 and filt.confidence_percent >= 40 
 
     rr = rr_from_peaks(filt.fused_signal, sig.fps, hr) if hr_valid else np.array([])
     sdnn = float(np.std(rr)*1000) if len(rr)>=5 else None
@@ -520,12 +524,13 @@ def estimate_vitals(sig: MultiROISignals, filt: FilteredSignal) -> VitalsEstimat
     stress_level = float(stress_res.score) if stress_res.score is not None else None
 
     # New BP Logic
+    conf_val = int(filt.confidence_percent) if not np.isnan(filt.confidence_percent) else 0
     bp_res = calculate_bp(
         heart_rate=hr,
         hrv_sdnn=sdnn,
         stress_level=stress_res.level, # "NORMAL", "MILD", "HIGH"
         rr_interval_ms=np.mean(rr)*1000 if len(rr)>0 else None,
-        confidence=int(filt.confidence_percent)
+        confidence=conf_val
     )
     
     bp_s = float(bp_res.systolic)
@@ -533,8 +538,10 @@ def estimate_vitals(sig: MultiROISignals, filt: FilteredSignal) -> VitalsEstimat
 
     spo2 = None
     if sig.g_forehead.size > 0:
-        val = np.std(sig.g_forehead)/ (np.mean(sig.g_forehead) + 1e-9)
-        spo2 = float(np.clip(104 - 18*val, 70, 99))
+        mean_g = np.mean(sig.g_forehead)
+        if mean_g > 0:
+            val = np.std(sig.g_forehead)/ (mean_g + 1e-9)
+            spo2 = float(np.clip(104 - 18*val, 70, 99))
 
     return VitalsEstimate(hr, hr_valid, rr, sdnn, stress_level, stress_res, bp_s, bp_d, bp_res, spo2)
 
@@ -546,7 +553,7 @@ def assess_risk(v: VitalsEstimate) -> RiskAssessment:
     score = 0
     alerts = []
 
-    if v.heart_rate_bpm:
+    if v.heart_rate_bpm and not np.isnan(v.heart_rate_bpm):
         if v.heart_rate_bpm > 140:
             alerts.append("High HR")
             score += 2
@@ -554,11 +561,11 @@ def assess_risk(v: VitalsEstimate) -> RiskAssessment:
             alerts.append("Low HR")
             score += 2
 
-    if v.sdnn and v.sdnn < 20:
+    if v.sdnn and not np.isnan(v.sdnn) and v.sdnn < 20:
         alerts.append("Low HRV")
         score += 2
 
-    if v.spo2 and v.spo2 < 92:
+    if v.spo2 and not np.isnan(v.spo2) and v.spo2 < 92:
         alerts.append("Low SpO2")
         score += 3
 
@@ -572,9 +579,14 @@ def assess_risk(v: VitalsEstimate) -> RiskAssessment:
 # ============================================================
 
 def estimate_vitals_from_video(video_path: str, use_mediapipe: bool = True):
-    # Ignoring use_mediapipe arg since global toggle controls it in this script
-    # but keeping signature for compatibility
     signals = extract_signals(video_path)
+    return process_and_assess(signals)
+
+def estimate_vitals_from_frames(frames: List[np.ndarray], fs: float):
+    signals = extract_signals_from_frames(frames, fs)
+    return process_and_assess(signals)
+
+def process_and_assess(signals: MultiROISignals):
     filtered = process_signals(signals)
     vitals = estimate_vitals(signals, filtered)
     risk = assess_risk(vitals)

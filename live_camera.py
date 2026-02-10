@@ -1,87 +1,105 @@
 """
-Native Cloud-Safe Camera Module for Wellio
-=========================================
+In-Memory Camera Module for Wellio
+==================================
 
-Uses Streamlit-native components for video capture/upload to ensure 
-compatibility with Streamlit Cloud while maintaining an interactive feel.
+Purely native Streamlit implementation.
+All data remains in RAM. No file I/O or temp storage.
+Uses PyAV to decode video streams in-memory.
 """
 
 import streamlit as st
-import tempfile
-import os
-import shutil
-from pathlib import Path
+import numpy as np
+import av
+import io
 import time
+from typing import List, Optional, Tuple
 
 def live_camera_interface():
     """
-    Renders a native Streamlit 'Capture Wizard' for video input.
-    Returns path to video file if upload is complete, else None.
+    Renders an in-memory capture interface.
+    Returns List[np.ndarray] and FPS if successful, else None.
     """
+    st.markdown("### 🧬 In-Memory Vital Scan")
     
-    st.markdown("### 📸 Vital Signs Capture Wizard")
+    # Guidance
+    with st.expander("📝 Instructions for In-Memory Capture"):
+        st.write("""
+        1. Click the button below to start your camera.
+        2. Record a **10-15 second** video of your face.
+        3. The data will be processed strictly in your device's RAM.
+        """)
     
-    # Step-by-step guidance
-    step = st.radio(
-        "Capture Steps",
-        ["1. Prepare", "2. Capture & Upload", "3. Analyze"],
-        horizontal=True,
-        label_visibility="collapsed"
+    # We use file_uploader with capture="user" as it is the most robust way
+    # to get a continuous video stream into memory on Streamlit Cloud without JS.
+    uploaded_file = st.file_uploader(
+        "Start In-Memory Capture", 
+        type=["mp4", "mov", "avi", "webm"],
+        capture="user",
+        help="This opens your native camera for a continuous recording."
     )
     
-    if "Prepare" in step:
-        st.info("💡 **Best Results**: Sit in a well-lit area, keep your face steady, and ensure your forehead/cheeks are clearly visible.")
-        st.image("https://img.icons8.com/fluency/96/person-female--v1.png", width=60) # Placeholder or local asset if available
-        st.write("When ready, move to the next step to record or upload a short clip.")
-        
-    elif "Capture & Upload" in step:
-        st.write("#### 📹 Record or Select Video")
-        st.caption("Please provide a **10-15 second** close-up video of your face.")
-        
-        # Native File Uploader
-        # Note: In mobile browsers, st.file_uploader(capture="user") can trigger native camera app
-        uploaded_file = st.file_uploader(
-            "Upload face video", 
-            type=["mp4", "mov", "avi", "webm"],
-            help="Most smartphones allow you to record directly when clicking 'Browse files'."
-        )
-        
-        if uploaded_file is not None:
-            st.success("✅ Video received!")
-            
-            # Save to temporary file
-            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            tfile.write(uploaded_file.read())
-            tfile.close()
-            
-            st.session_state["raw_video_path"] = tfile.name
-            st.info("Move to the **Analyze** step to start the vitals estimation.")
-            
-    elif "Analyze" in step:
-        if "raw_video_path" in st.session_state and st.session_state["raw_video_path"]:
-            st.write("#### ⚙️ Final Review")
-            st.video(st.session_state["raw_video_path"])
-            
-            if st.button("🚀 Start Interactive Analysis", type="primary"):
-                # Simulate "Live" extraction feedback
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                for i in range(101):
-                    time.sleep(0.02) # Fast simulation
-                    progress_bar.progress(i)
-                    if i < 30: status_text.text("🔍 Detecting face region...")
-                    elif i < 70: status_text.text("💓 Extracting signal from forehead...")
-                    else: status_text.text("📊 Processing vitals...")
-                
-                return st.session_state["raw_video_path"]
-        else:
-            st.warning("Please go back and upload a video first.")
+    if uploaded_file:
+        # Check if we've already processed this file in this session run
+        if "last_processed_id" not in st.session_state or st.session_state["last_processed_id"] != uploaded_file.id:
+            return process_upload_in_memory(uploaded_file)
             
     return None
 
-def process_recorded_video(video_path: str):
+def process_upload_in_memory(uploaded_file) -> Optional[Tuple[List[np.ndarray], float]]:
     """
-    Pass-through for the existing backend pipeline.
+    Decodes the uploaded BytesIO stream directly into a list of NumPy frames.
     """
-    return video_path
+    status = st.empty()
+    progress = st.progress(0)
+    
+    try:
+        status.info("📽️ Reading stream into memory...")
+        # PyAV can open file-like objects
+        container = av.open(uploaded_file)
+        
+        frames = []
+        fps = 0.0
+        
+        # Get stream and FPS
+        v_stream = container.streams.video[0]
+        # Some streams don't report average_rate, fallback to r_frame_rate
+        fps = float(v_stream.average_rate or v_stream.r_frame_rate)
+        if fps < 1: fps = 30.0 # Fallback
+        
+        # Extract frames
+        stream_total_frames = v_stream.frames or 300 # Assume ~10s at 30fps if unknown
+        
+        for i, frame in enumerate(container.decode(video=0)):
+            # Convert to NumPy BGR (Core logic expects BGR)
+            # frame.to_ndarray returns RGB or Gray, we want BGR for cv2-like logic
+            img = frame.to_ndarray(format='bgr24')
+            frames.append(img)
+            
+            # Update progress periodically
+            if i % 10 == 0:
+                p_val = min(1.0, i / stream_total_frames)
+                progress.progress(p_val)
+                status.info(f"🎞️ Extracting frames... {i} collected")
+        
+        container.close()
+        
+        if len(frames) < 60: # Less than ~2 seconds
+            st.error("Captured video too short. Please record for at least 10 seconds.")
+            return None
+            
+        status.success(f"✅ {len(frames)} frames buffered in RAM. Starting analysis...")
+        st.session_state["last_processed_id"] = uploaded_file.id
+        
+        # Final analysis step with interactive status
+        time.sleep(0.5)
+        return frames, fps
+
+    except Exception as e:
+        st.error(f"In-memory processing failed: {e}")
+        return None
+
+def process_recorded_video(data: Tuple[List[np.ndarray], float]):
+    """
+    Helper to bridge the interface with the backend.
+    """
+    return data
