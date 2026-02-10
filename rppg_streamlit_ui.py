@@ -1529,40 +1529,47 @@ if uploaded_file is not None or recorded_file_path is not None:
     if start_analysis:
         try:
             if not restore_from_cache:
-                progress_bar = st.progress(0, t("loading_video"))
-                
-                def progress_callback(current, total):
-                    progress_bar.progress(min(1.0, current / total), f"{t('processing_frame')} {current}/{total}...")
-                
-                # Main pipeline
-                # Main pipeline
-                # progress_callback not supported in new backend
-                vitals, filtered_signal, risk = estimate_vitals_from_video(
-                    tmp_path,
-                    use_mediapipe=use_mediapipe
-                )
-                
-                # Monkey-patch missing UI properties for compatibility
-                # Confidence
-                if vitals.heart_rate_valid:
-                    if filtered_signal.confidence_percent > 80:
-                        vitals.heart_rate_confidence = "HIGH"
-                    elif filtered_signal.confidence_percent > 60:
-                        vitals.heart_rate_confidence = "MEDIUM"
+                progress_placeholder = st.empty()
+                with progress_placeholder.container():
+                    progress_bar = st.progress(0, t("loading_video"))
+                    
+                    def progress_callback(current, total):
+                        progress_bar.progress(min(1.0, current / total), f"{t('processing_frame')} {current}/{total}...")
+                    
+                    # Main pipeline
+                    # Main pipeline
+                    # progress_callback not supported in new backend
+                    vitals, filtered_signal, risk = estimate_vitals_from_video(
+                        tmp_path,
+                        use_mediapipe=use_mediapipe
+                    )
+                    
+                    # Monkey-patch missing UI properties for compatibility
+                    # Confidence
+                    if vitals.heart_rate_valid:
+                        if filtered_signal.confidence_percent > 80:
+                            vitals.heart_rate_confidence = "HIGH"
+                        elif filtered_signal.confidence_percent > 60:
+                            vitals.heart_rate_confidence = "MEDIUM"
+                        else:
+                            vitals.heart_rate_confidence = "LOW"
                     else:
-                        vitals.heart_rate_confidence = "LOW"
-                else:
-                    vitals.heart_rate_confidence = "VERY LOW"
+                        vitals.heart_rate_confidence = "VERY LOW"
+                    
+                    # Notes
+                    vitals.bp_note = "Experimental heuristic. NOT VALIDATED."
+                    vitals.spo2_note = "Experimental estimate from green channel (uncalibrated)."
+                    
+                    # Cache the results
+                    st.session_state["analysis_results"] = (vitals, filtered_signal, risk)
+                    
+                    progress_bar.progress(1.0, f"{t('complete')}!")
+                    st.success(f"✅ {t('video_processed_success')}")
                 
-                # Notes
-                vitals.bp_note = "Experimental heuristic. NOT VALIDATED."
-                vitals.spo2_note = "Experimental estimate from green channel (uncalibrated)."
-                
-                # Cache the results
-                st.session_state["analysis_results"] = (vitals, filtered_signal, risk)
-                
-                progress_bar.progress(1.0, f"{t('complete')}!")
-                st.success(f"✅ {t('video_processed_success')}")
+                # Clear the progress and success messages after a short delay or immediately
+                import time
+                time.sleep(1.5) # meaningful delay to let user see success
+                progress_placeholder.empty()
                 
             else:
                 # Restore results
