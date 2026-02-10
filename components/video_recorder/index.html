@@ -134,18 +134,28 @@
         let timerInterval;
         let timeLeft = 15;
 
-        // Initialize Streamlit
-        function onStreamlitRender(event) {
-            // Set frame height so it doesn't scroll
-            Streamlit.setFrameHeight(container.offsetHeight + 40);
+        // Initialize Streamlit with safety
+        function init() {
+            try {
+                if (typeof Streamlit !== 'undefined') {
+                    Streamlit.events.addEventListener(Streamlit.EVENTS.RENDERER, () => {
+                        Streamlit.setFrameHeight(container.offsetHeight + 40);
+                    });
+                    Streamlit.setComponentReady();
+                    console.log("Streamlit component ready");
+                } else {
+                    console.warn("Streamlit JS not found, retrying...");
+                    setTimeout(init, 100);
+                }
+            } catch (err) {
+                console.error("Streamlit init error:", err);
+            }
         }
-
-        Streamlit.events.addEventListener(Streamlit.EVENTS.RENDERER, onStreamlitRender);
-        Streamlit.setComponentReady();
 
         // Start Preview immediately
         async function startPreview() {
             try {
+                statusText.innerText = "Requesting Camera...";
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "user",
@@ -158,12 +168,15 @@
                 statusText.innerText = "Camera Active";
             } catch (err) {
                 console.error("Camera error:", err);
-                statusText.innerText = "❌ Error: Camera access denied or not found.";
+                statusText.innerText = "❌ Camera Error: " + err.message;
                 statusText.style.color = "#ef4444";
             }
         }
 
-        startPreview();
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            startPreview();
+        });
 
         recordBtn.onclick = () => {
             if (!mediaRecorder || mediaRecorder.state === "inactive") {
@@ -173,15 +186,17 @@
 
         function startRecording() {
             recordedChunks = [];
-            const options = { mimeType: 'video/webm;codecs=vp8' };
+            // Try different mime types
+            const types = [
+                'video/webm;codecs=vp8',
+                'video/webm',
+                'video/mp4'
+            ];
 
-            // Fallback for Safari/iOS
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                options.mimeType = 'video/mp4';
-            }
+            let selectedType = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
 
             try {
-                mediaRecorder = new MediaRecorder(stream, options);
+                mediaRecorder = new MediaRecorder(stream, { mimeType: selectedType });
 
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data.size > 0) {
@@ -191,17 +206,18 @@
 
                 mediaRecorder.onstop = () => {
                     clearInterval(timerInterval);
-                    const blob = new Blob(recordedChunks, { type: options.mimeType });
+                    const blob = new Blob(recordedChunks, { type: selectedType });
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = () => {
                         const base64String = reader.result;
-                        // Send back to Streamlit
-                        Streamlit.setComponentValue({
-                            status: "success",
-                            data: base64String,
-                            type: options.mimeType
-                        });
+                        if (typeof Streamlit !== 'undefined') {
+                            Streamlit.setComponentValue({
+                                status: "success",
+                                data: base64String,
+                                type: selectedType
+                            });
+                        }
                     };
                     statusText.innerText = "✅ Clip captured! Processing...";
                     recordBtn.style.display = 'none';

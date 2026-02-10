@@ -11,16 +11,26 @@ PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
 COMPONENT_DIR = os.path.join(PARENT_DIR, "components", "video_recorder")
 
 # Declare the component
-_component_func = components.declare_component(
-    "video_recorder",
-    path=COMPONENT_DIR
-)
+if not os.path.exists(os.path.join(COMPONENT_DIR, "index.html")):
+    # Fallback/Error during initialization to help debugging
+    _component_func = None
+    _asset_error = f"Component assets not found at {COMPONENT_DIR}"
+else:
+    _component_func = components.declare_component(
+        "video_recorder",
+        path=COMPONENT_DIR
+    )
+    _asset_error = None
 
 def video_recorder(key=None):
     """
     Renders the custom video recorder component.
     Returns a dictionary with 'data' (base64) and 'type' if recorded, else None.
     """
+    if _component_func is None:
+        import streamlit as st
+        st.error(_asset_error)
+        return None
     return _component_func(key=key, default=None)
 
 def process_recorder_output(recorder_output) -> Optional[Tuple[List[np.ndarray], float]]:
