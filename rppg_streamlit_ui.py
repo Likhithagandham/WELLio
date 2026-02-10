@@ -21,8 +21,7 @@ from typing import Optional
 
 # Import translations module
 from translations import get_text, get_available_languages, translate_dynamic, LANGUAGES
-# Native Cloud-Safe camera recording
-from live_camera import live_camera_interface
+
 from streamlit_mic_recorder import speech_to_text
 from dotenv import load_dotenv
 
@@ -1580,40 +1579,23 @@ if HAVE_CHATBOT and HAVE_GEMINI:
 
 
 # ============================================================================
-# FILE UPLOAD OR LIVE RECORDING
+# VIDEO ANALYSIS (IN-MEMORY UPLOAD ONLY)
 # ============================================================================
 
-# Recording mode selector
-recording_mode = st.radio(
-    t("recording_mode_label"),
-    options=["upload", "live"],
-    format_func=lambda x: t(f"recording_mode_{x}"),
-    horizontal=True,
-    key="recording_mode_selector"
+uploaded_file = st.file_uploader(
+    f"📹 {t('upload_video_title')}",
+    type=["mp4", "mov", "avi", "mkv"],
+    help=t("upload_video_help")
 )
-
-uploaded_file = None
-recorded_file_path = None
 
 in_memory_data = None
 start_analysis = False
 
-if recording_mode == "live":
-    in_memory_data = live_camera_interface()
+if uploaded_file and st.button(f"🔍 {t('analyze_button')}", type="primary"):
+    from rppg_refactored import process_upload_in_memory
+    in_memory_data = process_upload_in_memory(uploaded_file)
     if in_memory_data:
         start_analysis = True
-        st.success("✅ Buffer ready. Starting analysis...")
-else:
-    uploaded_file = st.file_uploader(
-        f"📹 {t('upload_video_title')}",
-        type=["mp4", "mov", "avi", "mkv"],
-        help=t("upload_video_help")
-    )
-    if uploaded_file and st.button(f"🔍 {t('analyze_button')}", type="primary"):
-        from live_camera import process_upload_in_memory
-        in_memory_data = process_upload_in_memory(uploaded_file)
-        if in_memory_data:
-            start_analysis = True
 
 # Check if profile is completed
 profile_completed = st.session_state.get("profile_completed", False)

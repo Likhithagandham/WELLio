@@ -18,6 +18,9 @@ import cv2
 import numpy as np
 import pandas as pd
 import warnings
+import time
+import av
+import streamlit as st
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -591,3 +594,46 @@ def process_and_assess(signals: MultiROISignals):
     vitals = estimate_vitals(signals, filtered)
     risk = assess_risk(vitals)
     return vitals, filtered, risk
+
+def process_upload_in_memory(uploaded_file) -> Optional[Tuple[List[np.ndarray], float]]:
+    """
+    Decodes the uploaded BytesIO stream directly into a list of NumPy frames.
+    """
+    status = st.empty()
+    progress = st.progress(0)
+    
+    try:
+        status.info("📽️ Reading stream into memory...")
+        container = av.open(uploaded_file)
+        
+        frames = []
+        v_stream = container.streams.video[0]
+        fps = float(v_stream.average_rate or v_stream.r_frame_rate)
+        if fps < 1: fps = 30.0
+        
+        stream_total_frames = v_stream.frames or 300
+        
+        for i, frame in enumerate(container.decode(video=0)):
+            img = frame.to_ndarray(format='bgr24')
+            frames.append(img)
+            
+            if i % 10 == 0:
+                p_val = min(1.0, i / stream_total_frames)
+                progress.progress(p_val)
+                status.info(f"🎞️ Extracting frames... {i} collected")
+        
+        container.close()
+        
+        if len(frames) < 60:
+            st.error("Captured video too short. Please record for at least 10 seconds.")
+            return None
+            
+        status.success(f"✅ {len(frames)} frames buffered in RAM. Starting analysis...")
+        st.session_state["last_processed_id"] = uploaded_file.id
+        
+        time.sleep(0.5)
+        return frames, fps
+
+    except Exception as e:
+        status.error(f"In-memory processing failed: {e}")
+        return None
