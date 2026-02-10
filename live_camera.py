@@ -19,7 +19,6 @@ def live_camera_interface():
     Renders an in-memory capture interface.
     Returns List[np.ndarray] and FPS if successful, else None.
     """
-    st.markdown("### 🧬 In-Memory Vital Scan")
     
     # Guidance
     with st.expander("📝 Instructions for In-Memory Capture"):
