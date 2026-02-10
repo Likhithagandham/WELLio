@@ -1552,7 +1552,16 @@ if HAVE_CHATBOT and HAVE_GEMINI:
                         st.rerun()
             
         # Action buttons (Inside Dialog)
-
+        st.divider()
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button(f"🗑️ {t('chatbot_clear')}", type="secondary", use_container_width=True):
+                clear_chat_history(username)
+                st.session_state["chat_messages"] = []
+                st.rerun()
+        with col2:
+            if st.button(f"📹 {t('go_to_upload')}", type="primary", use_container_width=True):
+                st.rerun() # Closes dialog
 
 
 

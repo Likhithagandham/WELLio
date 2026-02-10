@@ -8,7 +8,7 @@ Stores session data in JSON format with user-specific directories.
 
 import json
 import os
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -50,20 +50,20 @@ class SessionData:
     bp_confidence: int = 0
     bp_disclaimer: str = ""
     spo2: Optional[float] = None
-    hrv_sdnn: float = 0.0
-    hrv_pnn50: float = 0.0
-    rr_intervals_count: int = 0
+    hrv_sdnn: float
+    hrv_pnn50: float
+    rr_intervals_count: int
     
     # Risk Assessment
-    risk_score: int = 0
-    risk_level: str = "low"
-    risk_factors: List[str] = field(default_factory=list)
-    protective_factors: List[str] = field(default_factory=list)
+    risk_score: int
+    risk_level: str
+    risk_factors: List[str]
+    protective_factors: List[str]
     
     # AI Insights
-    detailed_analysis: str = ""
-    recommendations: List[str] = field(default_factory=list)
-    symptoms_to_watch: List[str] = field(default_factory=list)
+    detailed_analysis: str
+    recommendations: List[str]
+    symptoms_to_watch: List[str]
     
     # Visualizations (base64 encoded PNG)
     signal_plot: Optional[str] = None

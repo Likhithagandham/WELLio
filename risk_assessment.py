@@ -1,253 +1,237 @@
 """
-Heuristic Risk Assessment Module
-================================
+Risk Assessment Module
+======================
 
-This module implements a rule-based, heuristic risk assessment system based on
-estimated vital signs and user profile data.
-
-⚠️ IMPORTANT:
-- This system is NOT a medical device.
-- It is non-diagnostic and intended for informational purposes only.
-- Logic is deterministic and explainable.
-- Missing inputs contribute 0 risk points (fail-safe).
+Implements a heuristic, benchmark-based risk scoring system for health vitals.
+The system is non-diagnostic and serves informational purposes only.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Optional, List
 
 @dataclass
 class RiskInput:
-    """Structured input for risk assessment."""
-    # Vitals (Optional to handle missing data gracefully)
+    # Vitals
     heart_rate: Optional[float] = None
     hrv_sdnn: Optional[float] = None
     stress_score: Optional[float] = None
     systolic_bp: Optional[float] = None
     diastolic_bp: Optional[float] = None
     spo2: Optional[float] = None
-    signal_confidence: float = 0.0
     
-    # Profile (Defaults provided for robustness)
-    age: int = 30
-    sex: str = "Male" # "Male", "Female", "Other"
-    activity_level: str = "Moderate" # "Low", "Moderate", "High"
-    is_athlete: bool = False
+    # User Profile
+    age: Optional[int] = None
+    sex: Optional[str] = None # "Female", "Male", "Other"
+    activity_level: Optional[str] = None # "High", "Moderate", "Low"
+    resting_athlete: bool = False
     is_smoker: bool = False
-    medical_conditions: List[str] = field(default_factory=list)
+    conditions: List[str] = field(default_factory=list) # e.g., ["hypertension", "diabetes"]
+    
+    # Metadata
+    signal_confidence: float = 100.0 # 0-100%
 
 @dataclass
 class RiskResult:
-    """Structured output for risk assessment."""
     risk_score: float
-    risk_level: str # "LOW", "MODERATE", "HIGH"
+    risk_level: str # LOW, MODERATE, HIGH
     alerts: List[str]
     profile_factors_used: List[str]
     recommendation: str
     confidence_percent: float
     disclaimer: str
 
-def calculate_risk(input_data: RiskInput) -> RiskResult:
+def calculate_risk(inputs: RiskInput) -> RiskResult:
     """
-    Calculates a heuristic risk score (0-10) based on vitals and profile.
-    
-    Rules:
-    - Vitals contribute base risk points.
-    - Profile factors modify the score (capped at +/- 2).
-    - Missing vitals contribute 0 risk.
-    - Final score is clamped between 0 and 10.
-    - logic is deterministic.
+    Calculates a heuristic risk score (0-10) based on vitals and profile data.
     """
-    
-    alerts = []
-    factors = []
-    
-    # --- 1. Vital Signs Scoring ---
     vital_points = 0.0
+    profile_points = 0.0
+    alerts = []
+    factors_used = []
+    
+    # ========================================================================
+    # 1. VITAL BENCHMARKS
+    # ========================================================================
     
     # Heart Rate (BPM)
-    hr_points = 0.0
-    if input_data.heart_rate is not None:
-        hr = input_data.heart_rate
-        if hr < 35:
-            hr_points = 4.0
-            alerts.append(f"Critical Bradycardia Detected ({hr:.0f} BPM)")
-        elif 35 <= hr <= 49:
-            hr_points = 2.0
-            alerts.append(f"Low Heart Rate ({hr:.0f} BPM)")
-        elif 50 <= hr <= 120:
-            hr_points = 0.0
-        elif 121 <= hr <= 140:
-            hr_points = 2.0
-            alerts.append(f"Elevated Heart Rate ({hr:.0f} BPM)")
-        elif 141 <= hr <= 180:
-            hr_points = 3.0
-            alerts.append(f"High Heart Rate ({hr:.0f} BPM)")
-        else: # > 180
-            hr_points = 4.0
-            alerts.append(f"Critical Tachycardia Detected ({hr:.0f} BPM)")
-            
-        # Athlete Modifier for HR
-        if input_data.is_athlete:
-            if hr < 50:
-                # Do not penalize low HR for athletes
-                if hr_points > 0:
-                     factors.append("Athlete: Low HR penalty waived")
-                hr_points = 0.0
+    if inputs.heart_rate is not None:
+        hr = inputs.heart_rate
+        if inputs.resting_athlete and hr < 50:
+            # Athlete Flag: Do NOT penalize HR < 50, and reduce HR risk by -1
+            # (Though if HR is < 35, the +4 would become +3)
+            if hr < 35:
+                vital_points += 3 # 4 - 1
+                alerts.append("Very low heart rate detected (Athlete adjusted)")
             else:
-                # Reduce HR risk by 1 for athletes if not already 0
-                if hr_points > 0:
-                    hr_points = max(0.0, hr_points - 1.0)
-                    factors.append("Athlete: HR risk reduced")
-
-        vital_points += hr_points
+                # No penalty for 35-49 if athlete
+                pass
+        else:
+            if hr < 35:
+                vital_points += 4
+                alerts.append("Critically low heart rate detected")
+            elif hr < 50:
+                vital_points += 2
+                alerts.append("Low heart rate detected")
+            elif 120 < hr <= 140:
+                vital_points += 2
+                alerts.append("Elevated heart rate detected")
+            elif 140 < hr <= 180:
+                vital_points += 3
+                alerts.append("High heart rate detected")
+            elif hr > 180:
+                vital_points += 4
+                alerts.append("Critically high heart rate detected")
 
     # HRV (SDNN in ms)
-    if input_data.hrv_sdnn is not None:
-        hrv = input_data.hrv_sdnn
-        if hrv < 10:
-            vital_points += 3.0
-            alerts.append("Critically Low HRV")
-        elif 10 <= hrv <= 19:
-            vital_points += 2.0
-            alerts.append("Very Low HRV")
-        elif 20 <= hrv <= 29:
-            vital_points += 1.0
-            alerts.append("Low HRV")
-        else: # >= 30
-            pass # 0 points
+    if inputs.hrv_sdnn is not None:
+        sdnn = inputs.hrv_sdnn
+        if sdnn < 10:
+            vital_points += 3
+            alerts.append("Very low HRV detected")
+        elif sdnn < 20:
+            vital_points += 2
+            alerts.append("Low HRV detected")
+        elif sdnn < 30:
+            vital_points += 1
+            alerts.append("Slightly low HRV detected")
 
     # Stress Score (0-10)
-    if input_data.stress_score is not None:
-        if input_data.stress_score > 8:
-            vital_points += 1.0
-            alerts.append("High Stress Detected")
-    
-    # Experimental BP
-    if input_data.systolic_bp is not None and input_data.diastolic_bp is not None:
-        sbp = input_data.systolic_bp
-        dbp = input_data.diastolic_bp
+    if inputs.stress_score is not None:
+        if inputs.stress_score > 8:
+            vital_points += 1
+            alerts.append("High stress level detected")
+
+    # Experimental Blood Pressure
+    s = inputs.systolic_bp
+    d = inputs.diastolic_bp
+    if s is not None or d is not None:
+        # SBP < 90 or DBP < 60 -> +2
+        is_low = (s is not None and s < 90) or (d is not None and d < 60)
+        # SBP 160-180 or DBP 100-110 -> +2
+        is_high_s1 = (s is not None and 160 <= s <= 180) or (d is not None and 100 <= d <= 110)
+        # SBP > 180 or DBP > 110 -> +4
+        is_high_s2 = (s is not None and s > 180) or (d is not None and d > 110)
         
-        if sbp < 90 or dbp < 60:
-            vital_points += 2.0
-            alerts.append("Low Blood Pressure")
-        elif sbp > 180 or dbp > 110:
-            vital_points += 4.0
-            alerts.append("Critical High Blood Pressure")
-        elif (160 <= sbp <= 180) or (100 <= dbp <= 110):
-            vital_points += 2.0
-            alerts.append("High Blood Pressure")
-        else:
-            pass # 0 points
+        if is_high_s2:
+            vital_points += 4
+            alerts.append("Critically high blood pressure detected")
+        elif is_high_s1:
+            vital_points += 2
+            alerts.append("High blood pressure detected")
+        elif is_low:
+            vital_points += 2
+            alerts.append("Low blood pressure detected")
 
-    # Experimental SpO2
-    if input_data.spo2 is not None:
-        spo2 = input_data.spo2
-        if spo2 < 90:
-            vital_points += 4.0
-            alerts.append(f"Critical Low SpO2 ({spo2:.1f}%)")
-        elif 90 <= spo2 <= 94:
-            vital_points += 2.0
-            alerts.append(f"Low SpO2 ({spo2:.1f}%)")
-        else:
-            pass # 0 points
+    # Experimental SpO2 (%)
+    if inputs.spo2 is not None:
+        if inputs.spo2 < 90:
+            vital_points += 4
+            alerts.append("Critically low SpO2 detected")
+        elif inputs.spo2 < 95:
+            vital_points += 2
+            alerts.append("Low SpO2 detected")
 
-    # --- 2. Profile Modifiers ---
-    profile_score = 0.0
+    # ========================================================================
+    # 2. USER PROFILE MODIFIERS
+    # ========================================================================
     
     # Age
-    age = input_data.age
-    if age < 30:
-        pass # 0
-    elif 30 <= age <= 45:
-        profile_score += 0.5
-        factors.append(f"Age {age} (+0.5)")
-    elif 46 <= age <= 60:
-        profile_score += 1.0
-        factors.append(f"Age {age} (+1.0)")
-    else: # > 60
-        profile_score += 2.0
-        factors.append(f"Age {age} (+2.0)")
-
+    if inputs.age is not None:
+        factors_used.append(f"Age: {inputs.age}")
+        if 30 <= inputs.age <= 45: profile_points += 0.5
+        elif 46 <= inputs.age <= 60: profile_points += 1.0
+        elif inputs.age > 60: profile_points += 2.0
+        
     # Sex
-    sex = input_data.sex.lower()
-    if sex == "female":
-        profile_score -= 0.5
-        factors.append("Sex: Female (-0.5)")
-    
+    if inputs.sex == "Female":
+        profile_points -= 0.5
+        factors_used.append("Sex: Female")
+        
     # Activity Level
-    activity = input_data.activity_level.lower()
-    if activity == "high":
-        profile_score -= 1.0
-        factors.append("Activity: High (-1.0)")
-    elif activity == "low":
-        profile_score += 1.0
-        factors.append("Activity: Low (+1.0)")
-    
+    if inputs.activity_level == "High":
+        profile_points -= 1.0
+        factors_used.append("Activity: High")
+    elif inputs.activity_level == "Low":
+        profile_points += 1.0
+        factors_used.append("Activity: Low")
+        
     # Smoking
-    if input_data.is_smoker:
-        profile_score += 1.0
-        factors.append("Smoker (+1.0)")
+    if inputs.is_smoker:
+        profile_points += 1.0
+        factors_used.append("Smoker")
         
     # Known Conditions
     condition_points = 0.0
-    recognized_conditions = ["hypertension", "diabetes", "cardiac_history", "respiratory_condition"]
-    for condition in input_data.medical_conditions:
-        norm_cond = condition.lower().replace(" ", "_").strip()
-        if norm_cond in recognized_conditions:
+    recognized = ["hypertension", "diabetes", "cardiac_history", "respiratory_condition"]
+    for c in inputs.conditions:
+        if c.lower() in recognized:
             condition_points += 1.0
-            factors.append(f"Condition: {condition} (+1.0)")
+            factors_used.append(f"Condition: {c}")
     
-    # Cap conditions at +2
-    if condition_points > 2.0:
-        condition_points = 2.0
-        factors.append("Conditions capped at +2.0")
-    profile_score += condition_points
-
-    # Clamp Total Profile Modifiers to +/- 2 points
-    if profile_score > 2.0:
-        profile_score = 2.0
-        factors.append("Profile impact capped at +2.0")
-    elif profile_score < -2.0:
-        profile_score = -2.0
-        factors.append("Profile impact capped at -2.0")
-
-    # --- 3. Final Calculation ---
-    final_score = vital_points + profile_score
+    # Cap conditions to +2
+    profile_points += min(2.0, condition_points)
     
-    # Clamp Final Score [0, 10]
-    final_score = max(0.0, min(10.0, final_score))
+    # Total impact from all profile modifiers combined must not exceed ±2 points
+    profile_points = max(-2.0, min(2.0, profile_points))
     
-    # Risk Level Determination
-    level = "LOW"
-    if final_score >= 7.0:
-        level = "HIGH"
-    elif final_score >= 3.0:
-        level = "MODERATE"
+    # ========================================================================
+    # 3. FINAL SYNTHESIS
+    # ========================================================================
+    
+    raw_score = vital_points + profile_points
+    # Clamp strictly between 0 and 10
+    final_score = max(0.0, min(10.0, raw_score))
+    
+    # Risk Levels: 0-2 LOW, 3-6 MODERATE, 7+ HIGH
+    if final_score >= 7:
+        risk_level = "HIGH"
+    elif final_score >= 3:
+        risk_level = "MODERATE"
     else:
-        level = "LOW"
+        risk_level = "LOW"
         
-    # --- 4. Signal Confidence Gating ---
-    if input_data.signal_confidence < 55.0:
-        alerts.append("Low signal confidence - Risk assessment reliability reduced.")
-        if level == "HIGH":
-            level = "MODERATE"
-            alerts.append("Risk downgraded due to low signal confidence.")
+    # SIGNAL CONFIDENCE GATING
+    if inputs.signal_confidence < 55:
+        alerts.append("Low signal confidence")
+        if risk_level == "HIGH":
+            risk_level = "MODERATE"
             
     # Recommendations
-    rec = ""
-    if level == "LOW":
-        rec = "Your metrics appear within a healthy range. Maintain your current healthy habits."
-    elif level == "MODERATE":
-        rec = "Some metrics are outside the optimal range. Consider monitoring your vitals and improving lifestyle habits."
-    else: # HIGH
-        rec = "Multiple metrics are significantly outside normal ranges. Please consult a healthcare professional for verification."
+    if risk_level == "LOW":
+        recommendation = "Maintain your current healthy habits. Continue regular monitoring."
+    elif risk_level == "MODERATE":
+        recommendation = "Consider reviewing your lifestyle factors. Ensure you are getting adequate rest and managing stress."
+    else:
+        recommendation = "Multiple indicators are outside optimal ranges. Please rest and consider re-taking the assessment in a calm state."
+
+    disclaimer = ("This assessment is experimental, non-diagnostic, and intended for informational purposes only. "
+                  "It should not be used for medical decision-making.")
 
     return RiskResult(
         risk_score=round(final_score, 1),
-        risk_level=level,
+        risk_level=risk_level,
         alerts=alerts,
-        profile_factors_used=factors,
-        recommendation=rec,
-        confidence_percent=input_data.signal_confidence,
-        disclaimer="This assessment is experimental, non-diagnostic, and intended for informational purposes only. It should not be used for medical decision-making."
+        profile_factors_used=factors_used,
+        recommendation=recommendation,
+        confidence_percent=inputs.signal_confidence,
+        disclaimer=disclaimer
     )
+
+if __name__ == "__main__":
+    # Example usage
+    example_input = RiskInput(
+        heart_rate=125,
+        hrv_sdnn=15,
+        systolic_bp=165,
+        is_smoker=True,
+        activity_level="Low",
+        age=50,
+        signal_confidence=90.0
+    )
+    
+    result = calculate_risk(example_input)
+    print(f"Risk Score: {result.risk_score}")
+    print(f"Risk Level: {result.risk_level}")
+    print(f"Alerts: {result.alerts}")
+    print(f"Profile Factors: {result.profile_factors_used}")
+    print(f"Recommendation: {result.recommendation}")
