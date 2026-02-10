@@ -855,6 +855,37 @@ if HAVE_HISTORY and st.session_state.get("viewing_history", False):
             with col1:
                 st.metric(t("estimated_pulse"), f"{session.heart_rate:.1f} BPM",
                          help=f"{t('confidence')}: {session.heart_rate_confidence}")
+                
+                # Add label below pulse based on BPM ranges (User Request)
+                try:
+                    bpm_val = float(session.heart_rate)
+                except Exception:
+                    bpm_val = None
+
+                if bpm_val is None:
+                    pulse_label = t("na")
+                    color = "#6b7280"
+                else:
+                    if bpm_val < 50:
+                        pulse_label = "⬇️ Low"
+                        color = "#3b82f6" # Blue
+                    elif bpm_val <= 60:
+                        pulse_label = "⬇️ Low-Normal"
+                        color = "#60a5fa" # Light Blue
+                    elif bpm_val <= 80:
+                        pulse_label = "✅ Normal"
+                        color = "#16a34a" # Green
+                    elif bpm_val <= 100:
+                        pulse_label = "⬆️ High-Normal"
+                        color = "#f59e0b" # Orange
+                    else:
+                        pulse_label = "⬆️ High"
+                        color = "#dc2626" # Red
+
+                st.markdown(
+                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{pulse_label}</div>",
+                    unsafe_allow_html=True
+                )
             
             with col2:
                 st.metric(t("stress_index"), f"{session.stress_level:.1f}",
@@ -1014,6 +1045,19 @@ if HAVE_HISTORY and st.session_state.get("viewing_all_history", False):
                 
                 with c2:
                     st.markdown(f"**❤️ {session.heart_rate:.0f} BPM**")
+                    
+                    # HR Label
+                    try:
+                        bpm = float(session.heart_rate)
+                        if bpm < 50: lbl="⬇️ Low"
+                        elif bpm <= 60: lbl="⬇️ Low-Normal"
+                        elif bpm <= 80: lbl="✅ Normal"
+                        elif bpm <= 100: lbl="⬆️ High-Normal"
+                        else: lbl="⬆️ High"
+                    except:
+                        lbl = "N/A"
+                        
+                    st.caption(f"{lbl}")
                     st.caption(f"Risk Level: {session.risk_level}")
                     
                 with c3:
@@ -1671,29 +1715,26 @@ if uploaded_file is not None or recorded_file_path is not None:
 
                 if bpm_val is None:
                     pulse_label = t("na")
+                    color = "#6b7280"
                 else:
                     if bpm_val < 50:
-                        pulse_label = t("pulse_low")
-                    elif bpm_val < 60:
-                        pulse_label = t("pulse_slightly_low")
+                        pulse_label = "⬇️ Low"
+                        color = "#3b82f6" # Blue
+                    elif bpm_val <= 60:
+                        pulse_label = "⬇️ Low-Normal"
+                        color = "#60a5fa" # Light Blue
+                    elif bpm_val <= 80:
+                        pulse_label = "✅ Normal"
+                        color = "#16a34a" # Green
                     elif bpm_val <= 100:
-                        pulse_label = t("pulse_normal")
-                    elif bpm_val <= 120:
-                        pulse_label = t("pulse_high")
+                        pulse_label = "⬆️ High-Normal"
+                        color = "#f59e0b" # Orange
                     else:
-                        pulse_label = t("pulse_very_high")
+                        pulse_label = "⬆️ High"
+                        color = "#dc2626" # Red
 
-                color_map = {
-                    "Low": "#60a5fa",
-                    "Slightly Low": "#f59e0b",
-                    "Normal": "#16a34a",
-                    "High": "#f97316",
-                    "Very High": "#dc2626",
-                    "N/A": "#6b7280"
-                }
-                color = color_map.get(pulse_label, "#6b7280")
                 st.markdown(
-                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px'>{pulse_label}</div>",
+                    f"<div style='display:inline-block;padding:6px 12px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;margin-top:6px'>{pulse_label}</div>",
                     unsafe_allow_html=True
                 )
             

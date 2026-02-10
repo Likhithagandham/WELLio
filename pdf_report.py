@@ -166,7 +166,7 @@ def generate_health_report(session: SessionData, lang: str = "en") -> bytes:
     
     vitals_data = [
         ["Metric", "Value", "Status"],
-        ["Heart Rate (rPPG)", f"{session.heart_rate:.1f} BPM", session.heart_rate_confidence],
+        ["Heart Rate (rPPG)", f"{session.heart_rate:.1f} BPM", get_hr_label(session.heart_rate)],
         ["Stress Index", f"{session.stress_level:.1f}/10", get_stress_label(session.stress_level)],
         ["Blood Pressure", 
          f"{session.bp_systolic:.0f}/{session.bp_diastolic:.0f} mmHg" if session.bp_systolic else "N/A",
@@ -374,6 +374,20 @@ def get_spo2_label(spo2: Optional[float], lang: str = "en") -> str:
         return get_text("spo2_low", lang)
     else:
         return get_text("spo2_very_low", lang)
+
+
+def get_hr_label(bpm: float) -> str:
+    """Get heart rate label based on user-specified ranges"""
+    if bpm < 50:
+        return "⬇️ Low"
+    elif bpm <= 60:
+        return "⬇️ Low-Normal"
+    elif bpm <= 80:
+        return "✅ Normal"
+    elif bpm <= 100:
+        return "⬆️ High-Normal"
+    else:
+        return "⬆️ High"
 
 
 def get_risk_color(risk_score: int) -> colors.Color:
