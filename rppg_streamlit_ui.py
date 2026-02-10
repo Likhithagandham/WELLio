@@ -13,7 +13,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
 from io import BytesIO
 import shutil
@@ -772,6 +772,8 @@ if HAVE_HISTORY:
         for session in sessions:
             try:
                 timestamp_dt = datetime.fromisoformat(session.timestamp)
+                # Convert to IST (UTC+5:30) for display
+                timestamp_dt = timestamp_dt + timedelta(hours=5, minutes=30)
                 timestamp_str = timestamp_dt.strftime("%d %b %Y · %I:%M %p")
             except:
                 timestamp_str = "Unknown date"
