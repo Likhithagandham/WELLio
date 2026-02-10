@@ -2258,9 +2258,9 @@ if uploaded_file is not None or recorded_file_path is not None:
                         recommendations=recommendations,
                         symptoms_to_watch=symptoms_to_watch,
                         
-                        # Visualizations (convert to base64)
-                        signal_plot=fig_to_base64(fig),
-                        hrv_plot=fig_to_base64(fig2) if vitals.rr_intervals.size > 0 else None
+                        # Visualizations (Removed per user request)
+                        signal_plot=None, # fig_to_base64(fig),
+                        hrv_plot=None # fig_to_base64(fig2) if vitals.rr_intervals.size > 0 else None
                     )
                     
                     # Save session
