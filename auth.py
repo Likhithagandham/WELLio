@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import streamlit as st
 
 # Load environment variables explicitly from the same directory
 env_path = Path(__file__).parent / '.env'
@@ -30,8 +31,19 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 # Debug print to help verify loading
 if not os.environ.get("SUPABASE_URL"):
-    print(f"DEBUG: .env file found at {env_path}? {env_path.exists()}")
-    print("DEBUG: Failed to load SUPABASE_URL from .env")
+    # prints are fine here, will show in logs
+    pass
+
+def get_config(key: str) -> Optional[str]:
+    """Retrieve config from st.secrets or os.environ"""
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except (FileNotFoundError, KeyError):
+        pass
+    
+    return os.environ.get(key)
+
 
 
 # ============================================================================
@@ -56,15 +68,22 @@ class User:
 def get_supabase_client() -> Optional[Client]:
     """
     Get Supabase client instance.
+    Prioritizes Streamlit Secrets (for Cloud), falls back to os.environ (for Local).
     
     Returns:
         Supabase client or None if credentials not found
     """
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
+    # 1. Try Streamlit Secrets
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except (FileNotFoundError, KeyError):
+        # 2. Fallback to Environment Variables
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_KEY")
     
     if not url or not key:
-        print("Warning: Supabase credentials not found in environment variables")
+        print("Warning: Supabase credentials not found in secrets or environment variables")
         return None
     
     try:
@@ -290,15 +309,13 @@ def create_user(email: str, password: str, name: str, language: str = "en") -> T
     if not name or len(name.strip()) < 2:
         return False, "Please enter your full name"
     
-    # Force reload env vars to be sure
-    if not os.environ.get("SUPABASE_URL"):
+    # Check credentials
+    if not get_config("SUPABASE_URL"):
+        # Try forced reload of .env only if locally missing
         load_dotenv(dotenv_path=Path(__file__).parent / '.env', override=True)
-
-    # Check credentials first
-    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
-        debug_msg = f"Env loaded from {Path(__file__).parent / '.env'}, value: {bool(os.environ.get('SUPABASE_URL'))}"
-        print(f"DEBUG: {debug_msg}")
-        return False, f"Missing Supabase configuration. {debug_msg}"
+    
+    if not get_config("SUPABASE_URL") or not get_config("SUPABASE_KEY"):
+         return False, "Missing Supabase configuration. Check .env or secrets."
 
     try:
         supabase = get_supabase_client()
@@ -345,15 +362,12 @@ def authenticate_user(email: str, password: str) -> Tuple[bool, Optional[User], 
     if not email or not password:
         return False, None, "Please enter both email and password"
     
-    # Force reload env vars to be sure
-    if not os.environ.get("SUPABASE_URL"):
+    # Check credentials
+    if not get_config("SUPABASE_URL") or not get_config("SUPABASE_KEY"):
+        # Try forced reload of .env only if locally missing
         load_dotenv(dotenv_path=Path(__file__).parent / '.env', override=True)
-
-    # Check credentials first
-    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
-        debug_msg = f"Env loaded from {Path(__file__).parent / '.env'}, value: {bool(os.environ.get('SUPABASE_URL'))}"
-        print(f"DEBUG: {debug_msg}")
-        return False, None, f"Missing Supabase configuration. {debug_msg}"
+        if not get_config("SUPABASE_URL"):
+             return False, None, "Missing Supabase configuration. Check .env or secrets."
 
     try:
         supabase = get_supabase_client()
