@@ -21,8 +21,8 @@ from typing import Optional
 
 # Import translations module
 from translations import get_text, get_available_languages, translate_dynamic, LANGUAGES
-# Disabled for cloud deployment - requires streamlit-webrtc
-# from live_camera import live_camera_interface, process_recorded_video
+# Browser-based camera recording (works on Streamlit Cloud)
+from browser_camera import live_camera_component, save_recorded_video
 from streamlit_mic_recorder import speech_to_text
 from dotenv import load_dotenv
 
@@ -1447,24 +1447,21 @@ if recording_mode == "live":
     st.subheader(f"📹 {t('live_recording_title')}")
     st.caption(t("live_recording_subtitle"))
     
-    # Use the WebRTC interface
-    # It returns a path if a recording was successfully captured and processed
-    # We add a manual checks button for UX if auto-detection misses the timing
+    # Use browser-based camera (HTML5 MediaRecorder API)
+    # Works on Streamlit Cloud without streamlit-webrtc!
+    video_data = live_camera_component(key="live_camera_recorder")
     
-    video_path = live_camera_interface()
-    
-    if video_path:
-        recorded_file_path = video_path
-        st.success("Video recorded successfully!")
-        
-        # Auto-trigger analysis if we have the file
-        # We can simulate an uploaded file object or just pass the path
-        # The existing logic expects `uploaded_file` (BytesIO).
-        # We need to adapt the analysis logic below to handle `recorded_file_path`.
-        
-    # Manual trigger if needed (though interface should handle it)
-    if not recorded_file_path:
-        st.info("When recording is complete, the video will be processed automatically.")
+    if video_data:
+        # User completed recording - save the video
+        with st.spinner("Processing recorded video..."):
+            recorded_file_path = save_recorded_video(video_data)
+            
+            if recorded_file_path:
+                st.success("✅ Video recorded successfully!")
+            else:
+                st.error("❌ Error saving video. Please try again.")
+    else:
+        st.info("💡 Click 'Start Camera' to begin recording")
 
 else:
     uploaded_file = st.file_uploader(
