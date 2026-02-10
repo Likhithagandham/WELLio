@@ -284,10 +284,14 @@ def create_user(email: str, password: str, name: str, language: str = "en") -> T
     if not name or len(name.strip()) < 2:
         return False, "Please enter your full name"
     
+    # Check credentials first
+    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+        return False, "Missing Supabase configuration. Check .env file."
+
     try:
         supabase = get_supabase_client()
         if not supabase:
-            return False, "Database connection error. Please try again."
+            return False, "Failed to initialize database client. Check server logs."
         
         # Check if user already exists
         if user_exists(email):
@@ -329,10 +333,14 @@ def authenticate_user(email: str, password: str) -> Tuple[bool, Optional[User], 
     if not email or not password:
         return False, None, "Please enter both email and password"
     
+    # Check credentials first
+    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+        return False, None, "Missing Supabase configuration. Check .env file."
+
     try:
         supabase = get_supabase_client()
         if not supabase:
-            return False, None, "Database connection error. Please try again."
+            return False, None, "Failed to initialize database client. Check server logs."
         
         # Get user from Supabase
         response = supabase.table('users').select('*').eq('email', email.lower()).execute()
