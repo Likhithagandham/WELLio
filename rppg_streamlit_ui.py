@@ -791,7 +791,7 @@ if HAVE_HISTORY:
         
         # View All Button if we have more than 3
         if len(sessions) > 3:
-            if st.sidebar.button(f"📂 {t('view_all_history') if 'view_all_history' in locals() else 'View All Past Reports'}", type="secondary"):
+            if st.sidebar.button(f"📂 {t('view_all_history') if 'view_all_history' in locals() else 'View All Past Reports'}", type="secondary", use_container_width=True):
                 st.session_state["viewing_all_history"] = True
                 st.session_state["viewing_history"] = False
                 st.session_state["viewing_trends"] = False
