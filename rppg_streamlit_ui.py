@@ -766,10 +766,13 @@ if HAVE_HISTORY:
     
     # List recent sessions
     if session_count > 0:
-        sessions = list_sessions(username, limit=10)
+        # Get all sessions but only show top 3 in sidebar
+        sessions = list_sessions(username, limit=10) # Get enough to show we have more
         
         st.sidebar.caption(f"{t('recent_analyses')}")
-        for session in sessions:
+        
+        # Show only first 3
+        for session in sessions[:3]:
             try:
                 timestamp_dt = datetime.fromisoformat(session.timestamp)
                 # Convert to IST (UTC+5:30) for display
@@ -783,7 +786,17 @@ if HAVE_HISTORY:
             if st.sidebar.button(button_label, key=f"hist_{session.session_id}"):
                 st.session_state["selected_session_id"] = session.session_id
                 st.session_state["viewing_history"] = True
+                st.session_state["viewing_all_history"] = False # Exit view all mode
                 st.rerun()
+        
+        # View All Button if we have more than 3
+        if len(sessions) > 3:
+            if st.sidebar.button(f"📂 {t('view_all_history') if 'view_all_history' in locals() else 'View All Past Reports'}", type="secondary", use_container_width=True):
+                st.session_state["viewing_all_history"] = True
+                st.session_state["viewing_history"] = False
+                st.session_state["viewing_trends"] = False
+                st.rerun()
+
     else:
         st.sidebar.info(t("no_history"))
     
@@ -793,6 +806,7 @@ if HAVE_HISTORY:
         if st.sidebar.button(f"📊 {t('view_trends_button')}", use_container_width=True, type="secondary"):
             st.session_state["viewing_trends"] = True
             st.session_state["viewing_history"] = False
+            st.session_state["viewing_all_history"] = False
             st.rerun()
 
 # ============================================================================
@@ -955,6 +969,61 @@ if HAVE_HISTORY and st.session_state.get("viewing_history", False):
                 st.session_state.pop("selected_session_id", None)
                 st.rerun()
             st.stop()
+
+
+# ============================================================================
+# ALL HISTORY BOARD
+# ============================================================================
+
+if HAVE_HISTORY and st.session_state.get("viewing_all_history", False):
+    username = get_current_user_email() or "default_user"
+    
+    # Header
+    st.title(f"📂 {t('history_sidebar_title')}")
+    st.caption("Browse all your past health analysis reports.")
+    
+    # Navigation
+    if st.button(f"🏠 {t('back_to_home')}", type="secondary"):
+        st.session_state["viewing_all_history"] = False
+        st.rerun()
+        
+    st.divider()
+    
+    # Fetch all sessions
+    all_sessions = list_sessions(username, limit=100) # Reasonable limit
+    
+    if not all_sessions:
+        st.info(t("no_history"))
+    else:
+        # Display as a grid of cards
+        for session in all_sessions:
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([2, 2, 1])
+                
+                try:
+                    timestamp_dt = datetime.fromisoformat(session.timestamp) + timedelta(hours=5, minutes=30)
+                    date_str = timestamp_dt.strftime("%d %B %Y")
+                    time_str = timestamp_dt.strftime("%I:%M %p")
+                except:
+                    date_str = "Unknown"
+                    time_str = ""
+                
+                with c1:
+                    st.markdown(f"**🗓️ {date_str}**")
+                    st.caption(f"🕒 {time_str}")
+                
+                with c2:
+                    st.markdown(f"**❤️ {session.heart_rate:.0f} BPM**")
+                    st.caption(f"Risk Level: {session.risk_level}")
+                    
+                with c3:
+                    if st.button("Open", key=f"open_all_{session.session_id}", use_container_width=True, type="primary"):
+                        st.session_state["selected_session_id"] = session.session_id
+                        st.session_state["viewing_history"] = True
+                        st.session_state["viewing_all_history"] = False
+                        st.rerun()
+    
+    st.stop()
 
 
 # ============================================================================
