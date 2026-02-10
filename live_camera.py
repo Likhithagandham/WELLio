@@ -29,18 +29,14 @@ def live_camera_interface():
         3. The data will be processed strictly in your device's RAM.
         """)
     
-    # We use file_uploader with capture="user" as it is the most robust way
-    # to get a continuous video stream into memory on Streamlit Cloud without JS.
-    uploaded_file = st.file_uploader(
-        "Start In-Memory Capture", 
-        type=["mp4", "mov", "avi", "webm"],
-        help="Capture or upload a 10-15s video for in-memory analysis."
-    )
+    # Custom Live Recorder Component (Cloud Safe, MediaRecorder API)
+    from video_recorder import video_recorder, process_recorder_output
     
-    if uploaded_file:
-        # Check if we've already processed this file in this session run
-        if "last_processed_id" not in st.session_state or st.session_state["last_processed_id"] != uploaded_file.id:
-            return process_upload_in_memory(uploaded_file)
+    recorder_output = video_recorder(key="live_video_recorder")
+    
+    if recorder_output:
+        st.info("✅ Clip captured! Processing frames in memory...")
+        return process_recorder_output(recorder_output)
             
     return None
 
