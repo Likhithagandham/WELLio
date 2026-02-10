@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Live Camera Component</title>
+    <script src="face-api.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            /* Mirror effect */
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #status-container {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        #status-badge {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+        }
+
+        .status-recording {
+            background: rgba(220, 38, 38, 0.8) !important;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        #controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background: #1f2937;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #374151;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .start-btn {
+            background: #2563eb;
+        }
+
+        .start-btn:hover {
+            background: #1d4ed8;
+        }
+
+        #timer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 18px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+        <div id="timer">00:00</div>
+        <div id="status-container">
+            <div id="status-badge">Waiting for camera...</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="cameraBtn" class="start-btn">Start Camera</button>
+        <button id="recordBtn" disabled>Start Recording</button>
+    </div>
+
+    <script>
+        // Streamlit Component Utils
+        function sendMessage(data) {
+            window.parent.postMessage({
+                type: "streamlit:setComponentValue",
+                value: data
+            }, "*");
+        }
+
+        function setFrameHeight() {
+            const height = document.body.scrollHeight;
+            window.parent.postMessage({
+                type: "streamlit:setFrameHeight",
+                height: height
+            }, "*");
+        }
+
+        // Initialize frame height
+        setFrameHeight();
+        window.addEventListener("resize", setFrameHeight);
+
+        // Core Variables
+        const video = document.getElementById("video");
+        const overlay = document.getElementById("overlay");
+        const statusBadge = document.getElementById("status-badge");
+        const cameraBtn = document.getElementById("cameraBtn");
+        const recordBtn = document.getElementById("recordBtn");
+        const timer = document.getElementById("timer");
+
+        let stream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let faceDetectionInterval = null;
+        let recordingInterval = null;
+        let isRecording = false;
+
+        // Load face-api models
+        async function loadModels() {
+            try {
+                statusBadge.innerText = "Loading AI models...";
+                await face_api.nets.tinyFaceDetector.loadFromUri("./");
+                statusBadge.innerText = "Models loaded. Start camera.";
+                cameraBtn.disabled = false;
+            } catch (err) {
+                console.error("Error loading models:", err);
+                statusBadge.innerText = "Error loading models.";
+            }
+        }
+
+        // Initialize models immediately
+        loadModels();
+
+        // Camera Handling
+        cameraBtn.addEventListener("click", async () => {
+            try {
+                cameraBtn.disabled = true;
+                statusBadge.innerText = "Accessing camera...";
+
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                statusBadge.innerText = "Position your face in the guide";
+                cameraBtn.innerText = "Camera On";
+
+                // Start face detection once video plays
+                video.onloadedmetadata = () => {
+                    startFaceDetection();
+                };
+            } catch (err) {
+                console.error("Camera error:", err);
+                statusBadge.innerText = "Camera access denied.";
+                cameraBtn.disabled = false;
+            }
+        });
+
+        // Face Detection Logic
+        function startFaceDetection() {
+            const displaySize = { width: video.clientWidth, height: video.clientHeight };
+            face_api.matchDimensions(overlay, displaySize);
+
+            faceDetectionInterval = setInterval(async () => {
+                if (!stream || isRecording) return;
+
+                const detections = await face_api.detectAllFaces(
+                    video,
+                    new face_api.TinyFaceDetectorOptions()
+                );
+
+                const resizedDetections = face_api.resizeResults(detections, displaySize);
+                const ctx = overlay.getContext("2d");
+                ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+                // Draw Oval Guide
+                const cx = overlay.width / 2;
+                const cy = overlay.height * 0.45;
+                const rx = overlay.width * 0.22;
+                const ry = overlay.height * 0.35;
+
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                ctx.lineWidth = 4;
+
+                let faceInGuide = false;
+                if (resizedDetections.length > 0) {
+                    const face = resizedDetections[0].box;
+                    const faceCenter = { x: face.x + face.width / 2, y: face.y + face.height / 2 };
+
+                    // Check if face center is within the oval (simplified)
+                    const dx = (faceCenter.x - cx) / rx;
+                    const dy = (faceCenter.y - cy) / ry;
+                    const distance = dx * dx + dy * dy;
+
+                    if (distance < 0.6 && face.width > rx * 0.8) {
+                        faceInGuide = true;
+                    }
+                }
+
+                if (faceInGuide) {
+                    ctx.strokeStyle = "#10b981"; // Green
+                    statusBadge.innerText = "Ready to record";
+                    recordBtn.disabled = false;
+                } else {
+                    ctx.strokeStyle = "#f59e0b"; // Orange
+                    statusBadge.innerText = "Center your face in the guide";
+                    recordBtn.disabled = true;
+                }
+                ctx.stroke();
+
+            }, 200);
+        }
+
+        // Recording Logic
+        recordBtn.addEventListener("click", () => {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
+        function startRecording() {
+            isRecording = true;
+            recordedChunks = [];
+
+            mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp8" });
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                statusBadge.innerText = "Processing video...";
+                const blob = new Blob(recordedChunks, { type: "video/webm" });
+
+                // Convert to base64
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = () => {
+                    const base64data = reader.result.split(',')[1];
+                    sendMessage(base64data);
+                };
+            };
+
+            mediaRecorder.start();
+            recordBtn.innerText = "Stop Recording";
+            recordBtn.classList.add("recording-btn");
+            statusBadge.innerText = "Recording...";
+            statusBadge.classList.add("status-recording");
+
+            // Timer logic (15 seconds)
+            timer.style.display = "block";
+            let seconds = 15;
+            timer.innerText = `00:${seconds.toString().padStart(2, '0')}`;
+
+            recordingInterval = setInterval(() => {
+                seconds--;
+                timer.innerText = `00:${seconds.toString().padStart(2, '0')}`;
+                if (seconds <= 0) {
+                    stopRecording();
+                }
+            }, 1000);
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+            }
+            clearInterval(recordingInterval);
+            isRecording = false;
+            recordBtn.disabled = true;
+            recordBtn.innerText = "Sending...";
+            statusBadge.innerText = "Processing...";
+            statusBadge.classList.remove("status-recording");
+            timer.style.display = "none";
+        }
+
+    </script>
+</body>
+
+</html>
