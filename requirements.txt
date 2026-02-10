@@ -3,6 +3,7 @@ opencv-python-headless>=4.8.0
 scipy>=1.10.0
 numpy>=1.24.0
 pandas>=2.0.0
+av>=12.0.0
 
 # Optional: Better Face Detection
 mediapipe>=0.9.0
