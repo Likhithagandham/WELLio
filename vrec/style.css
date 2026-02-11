@@ -32,9 +32,12 @@ body {
 .app-container {
     width: 100%;
     max-width: 640px;
+    min-height: 400px;
+    /* Ensure component has visible height initially */
     display: flex;
     flex-direction: column;
     gap: 24px;
+    margin: 0 auto;
 }
 
 header {

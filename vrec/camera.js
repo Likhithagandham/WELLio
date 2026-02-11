@@ -51,10 +51,12 @@ class HealthCamera {
 
         this.initEventListeners();
 
-        // Final Streamlit Handshake
+        // Final Streamlit Handshake - Official Pattern
         if (window.Streamlit) {
+            Streamlit.events.addEventListener(Streamlit.EVENTS.RENDERER, () => {
+                this.updateFrameHeight();
+            });
             Streamlit.setComponentReady();
-            this.updateFrameHeight();
         }
     }
 
