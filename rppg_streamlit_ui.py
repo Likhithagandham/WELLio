@@ -1578,24 +1578,40 @@ if HAVE_CHATBOT and HAVE_GEMINI:
     st.divider()
 
 
-# ============================================================================
-# VIDEO ANALYSIS (IN-MEMORY UPLOAD ONLY)
-# ============================================================================
-
-uploaded_file = st.file_uploader(
-    f"📹 {t('upload_video_title')}",
-    type=["mp4", "mov", "avi", "mkv"],
-    help=t("upload_video_help")
+# Recording mode selector
+recording_mode = st.radio(
+    t("recording_mode_label"),
+    options=["upload", "live"],
+    format_func=lambda x: t(f"recording_mode_{x}"),
+    horizontal=True,
+    key="recording_mode_selector"
 )
 
+uploaded_file = None
 in_memory_data = None
 start_analysis = False
 
-if uploaded_file and st.button(f"🔍 {t('analyze_button')}", type="primary"):
-    from rppg_refactored import process_upload_in_memory
-    in_memory_data = process_upload_in_memory(uploaded_file)
-    if in_memory_data:
-        start_analysis = True
+if recording_mode == "live":
+    from video_recorder import video_recorder, process_recorder_output
+    recorder_output = video_recorder(key="live_video_recorder")
+    
+    if recorder_output:
+        st.success("✅ Recording captured!")
+        if st.button(f"🔍 {t('analyze_button')}", type="primary", key="analyze_live"):
+            in_memory_data = process_recorder_output(recorder_output)
+            if in_memory_data:
+                start_analysis = True
+else:
+    uploaded_file = st.file_uploader(
+        f"📹 {t('upload_video_title')}",
+        type=["mp4", "mov", "avi", "mkv"],
+        help=t("upload_video_help")
+    )
+    if uploaded_file and st.button(f"🔍 {t('analyze_button')}", type="primary", key="analyze_upload"):
+        from rppg_refactored import process_upload_in_memory
+        in_memory_data = process_upload_in_memory(uploaded_file)
+        if in_memory_data:
+            start_analysis = True
 
 # Check if profile is completed
 profile_completed = st.session_state.get("profile_completed", False)

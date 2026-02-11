@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WELLio Pure Camera</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts: Inter for a premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Streamlit Component Library -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <h1 class="logo">WELLio <span>Pro Recorder</span></h1>
+        </header>
+
+        <main class="recorder-card">
+            <div class="video-wrapper">
+                <!-- Preview Stream -->
+                <video id="preview" autoplay muted playsinline class="video-element preview-mode"></video>
+                <!-- Recorded Result (hidden by default) -->
+                <video id="recording-result" playsinline controls class="video-element hidden"></video>
+
+                <!-- Status Overlay -->
+                <div class="video-overlay" id="video-overlay">
+                    <div class="recording-indicator hidden" id="rec-indicator">
+                        <span class="dot"></span>
+                        <span id="rec-timer">00:00</span>
+                    </div>
+                    <div id="overlay-message" class="overlay-text">Click "Start Camera" to Begin</div>
+                </div>
+            </div>
+
+            <div class="status-bar" id="status-bar">
+                <span class="status-dot grey" id="status-dot"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+
+            <div class="controls-panel">
+                <div class="button-group active-ui" id="setup-group">
+                    <button id="start-camera-btn" class="btn btn-primary">Start Camera</button>
+                </div>
+
+                <div class="button-group hidden" id="record-group">
+                    <button id="start-rec-btn" class="btn btn-danger">Start Recording</button>
+                    <button id="stop-rec-btn" class="btn btn-secondary" disabled>Stop Recording</button>
+                </div>
+
+                <div class="button-group hidden" id="result-group">
+                    <button id="save-btn" class="btn btn-outline">Save Locally</button>
+                    <button id="upload-btn" class="btn btn-success">Send to Backend</button>
+                    <button id="reset-btn" class="btn btn-text">Reset</button>
+                </div>
+            </div>
+
+            <div id="progress-container" class="progress-wrapper hidden">
+                <div class="progress-label">Uploading...</div>
+                <div class="progress-track">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p class="disclaimer">Data processed locally in browser. Max duration: 30s.</p>
+        </footer>
+    </div>
+
+    <!-- Core Logic -->
+    <script src="camera.js"></script>
+</body>
+
+</html>
