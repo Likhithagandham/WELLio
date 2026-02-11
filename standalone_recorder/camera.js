@@ -50,6 +50,12 @@ class HealthCamera {
         this.MAX_DURATION = 30; // seconds
 
         this.initEventListeners();
+
+        // Final Streamlit Handshake
+        if (window.Streamlit) {
+            Streamlit.setComponentReady();
+            this.updateFrameHeight();
+        }
     }
 
     initEventListeners() {
@@ -172,7 +178,12 @@ class HealthCamera {
         this.resultGroup.classList.toggle('hidden', state !== 'result');
 
         // Notify Streamlit that our height might have changed
+        this.updateFrameHeight();
+    }
+
+    updateFrameHeight() {
         if (window.Streamlit) {
+            // Use a small delay to ensure DOM has rendered
             setTimeout(() => {
                 Streamlit.setFrameHeight(document.body.scrollHeight);
             }, 50);
