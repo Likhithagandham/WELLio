@@ -8,8 +8,8 @@ from typing import List, Tuple, Optional
 
 # Absolute path to the component directory
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Standalone recorder directory
-COMPONENT_DIR = os.path.abspath(os.path.join(PARENT_DIR, "standalone_recorder"))
+# Standalone recorder directory (Short name for cloud stability)
+COMPONENT_DIR = os.path.abspath(os.path.join(PARENT_DIR, "vrec"))
 
 # Declare the component
 if not os.path.exists(os.path.join(COMPONENT_DIR, "index.html")):
